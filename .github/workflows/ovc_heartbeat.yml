@@ -2,7 +2,7 @@ name: OVC Heartbeat Diario
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # 8:00 AM Miami (UTC-4)
+    - cron: '0 4,8,12,16,20,0 * * *'  # cada 4h: 00,04,08,12,16,20 Miami (UTC-4)
   workflow_dispatch:
 
 jobs:
