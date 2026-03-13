@@ -1,0 +1,42 @@
+name: OVC Monitor Consular
+
+on:
+  # Intervalos irregulares — evita patrón regular detectable por antibot
+  # Gaps: 7, 6, 6, 7, 6, 6, 6, 7, 6 minutos + sleep aleatorio interno (10-90s)
+  schedule:
+    - cron: '0,7,13,19,26,32,38,44,51,57 * * * *'
+  workflow_dispatch:   # Lanzar manualmente desde GitHub si hace falta
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4   # Mata el job si algo cuelga
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Instalar Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Verificar disponibilidad
+        env:
+          URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+        run: python ovc_once.py
