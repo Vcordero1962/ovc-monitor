@@ -1,0 +1,51 @@
+name: OVC Heartbeat Diario
+
+on:
+  schedule:
+    # 8:00 AM hora Miami/Cuba (UTC-4 EDT) = 12:00 UTC
+    - cron: '0 12 * * *'
+  workflow_dispatch:   # Permite dispararlo manualmente para probar
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Enviar resumen diario a Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 - <<'EOF'
+import requests, os
+from datetime import datetime, timezone, timedelta
+
+token   = os.environ["TELEGRAM_BOT_TOKEN"]
+chat_id = os.environ["TELEGRAM_CHAT_ID"]
+
+# Hora Miami (UTC-4)
+miami = datetime.now(timezone(timedelta(hours=-4)))
+fecha = miami.strftime("%d/%m/%Y")
+hora  = miami.strftime("%H:%M")
+
+msg = (
+    "✅ OVC Monitor — Estoy vivo\n"
+    f"📅 {fecha}  🕗 {hora} (Miami)\n"
+    "─────────────────────────\n"
+    "🤖 El bot está activo y vigilando\n"
+    "   el sitio de citas 24/7\n\n"
+    "⏱ Frecuencia: cada ~7 min\n"
+    "📊 Checks aprox hoy: ~140\n\n"
+    "🔴 Sin novedades hasta ahora.\n"
+    "   Si hay cita, recibirás alerta\n"
+    "   inmediata con botón ABRIR AHORA."
+)
+
+r = requests.post(
+    f"https://api.telegram.org/bot{token}/sendMessage",
+    json={"chat_id": chat_id, "text": msg},
+    timeout=10,
+)
+print("Heartbeat enviado OK" if r.ok else f"Error: {r.status_code} {r.text}")
+EOF
