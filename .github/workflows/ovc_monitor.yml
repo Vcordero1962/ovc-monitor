@@ -33,9 +33,9 @@ jobs:
       - name: Instalar Chromium
         run: playwright install --with-deps chromium
 
-      # ── VPN WireGuard (Windscribe Netherlands) ─────────────────────────────
-      # SECRET: WG_CONFIG_NL = contenido del .conf de Windscribe
-      # Obtener en: windscribe.com → Mi cuenta → Config Generator → WireGuard → NL
+      # ── VPN WireGuard (ProtonVPN NL-FREE#79, Netherlands) ──────────────────
+      # SECRET: WG_CONFIG_NL = config ProtonVPN WireGuard NL-FREE#79
+      # Renovar en: account.protonvpn.com/downloads → WireGuard → Países Bajos
       - name: Conectar VPN Europa (Netherlands)
         env:
           WG_CONFIG: ${{ secrets.WG_CONFIG_NL }}
