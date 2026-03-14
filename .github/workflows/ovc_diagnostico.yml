@@ -22,6 +22,23 @@ jobs:
           pip install requests python-dotenv playwright 2>/dev/null || true
           playwright install --with-deps chromium 2>/dev/null || true
 
+      # ── WireGuard VPN (Windscribe Netherlands) ─────────────────────────────
+      - name: Conectar VPN Europa (Netherlands)
+        env:
+          WG_CONFIG: ${{ secrets.WG_CONFIG_NL }}
+        run: |
+          if [ -z "$WG_CONFIG" ]; then
+            echo "WG_CONFIG_NL no configurado — sin VPN"
+            exit 0
+          fi
+          sudo apt-get install -y wireguard-tools 2>/dev/null
+          echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo wg-quick up wg0
+          sleep 3
+          IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
+          echo "IP tras VPN: $IP"
+
       - name: Ejecutar diagnóstico
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -29,6 +46,11 @@ jobs:
           URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
           AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
         run: python ovc_diagnostico.py
+
+      # ── Desconectar VPN ────────────────────────────────────────────────────
+      - name: Desconectar VPN
+        if: always()
+        run: sudo wg-quick down wg0 2>/dev/null || true
 
       - name: Subir screenshot como artefacto
         if: always()
