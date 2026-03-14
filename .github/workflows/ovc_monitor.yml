@@ -48,15 +48,22 @@ jobs:
           sudo rm -f /etc/resolv.conf
           # Levantar WireGuard (sin DNS en config → no toca resolv.conf)
           sudo wg-quick up wg0
-          # DNS: 168.63.129.16 = Azure hypervisor DNS (interceptado a nivel hypervisor,
-          # responde aunque todo el trafico vaya por wg0 con AllowedIPs=0.0.0.0/0)
+          # DNS via Azure hypervisor (168.63.129.16) — bypasa wg0, siempre responde
           printf "nameserver 168.63.129.16\nnameserver 8.8.8.8\n" | sudo tee /etc/resolv.conf
-          sleep 2
-          # Verificar DNS y VPN IP
-          RESOLVED=$(getent hosts t.me 2>/dev/null | awk '{print $1}')
-          echo "DNS test t.me: ${RESOLVED:-FALLO}"
+          sleep 3
+          # Verificar si el tunel WireGuard realmente pasa trafico
           IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
-          echo "IP tras VPN: $IP"
+          HANDSHAKE=$(sudo wg show wg0 latest-handshakes 2>/dev/null | awk '{print $2}')
+          echo "IP tras VPN: $IP | Handshake epoch: ${HANDSHAKE:-0}"
+          if [ "$IP" = "?" ] || [ "${HANDSHAKE:-0}" = "0" ]; then
+            echo "AVISO: tunel WireGuard sin trafico (Azure bloquea UDP/51820)"
+            echo "Bajando wg0 para restaurar trafico directo (AVC Telegram funciona sin VPN)"
+            sudo wg-quick down wg0 2>/dev/null || true
+            # Restaurar DNS sin wg0
+            printf "nameserver 168.63.129.16\nnameserver 8.8.8.8\n" | sudo tee /etc/resolv.conf
+          else
+            echo "OK: tunel activo, salida por IP europea"
+          fi
 
       - name: Verificar disponibilidad
         env:
