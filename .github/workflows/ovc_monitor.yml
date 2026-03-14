@@ -1,16 +1,14 @@
 name: OVC Monitor Consular
 
 on:
-  # Intervalos irregulares — evita patrón regular detectable por antibot
-  # Gaps: 7, 6, 6, 7, 6, 6, 6, 7, 6 minutos + sleep aleatorio interno (10-90s)
   schedule:
     - cron: '0,7,13,19,26,32,38,44,51,57 * * * *'
-  workflow_dispatch:   # Lanzar manualmente desde GitHub si hace falta
+  workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 6   # Tiempo extra para VPN connect
+    timeout-minutes: 6
 
     steps:
       - name: Checkout
@@ -33,28 +31,27 @@ jobs:
       - name: Instalar Chromium
         run: playwright install --with-deps chromium
 
-      # ── VPN WireGuard (ProtonVPN NL-FREE#79, Netherlands) ──────────────────
-      # SECRET: WG_CONFIG_NL = config ProtonVPN WireGuard NL-FREE#79
-      # Renovar en: account.protonvpn.com/downloads → WireGuard → Países Bajos
       - name: Conectar VPN Europa (Netherlands)
         env:
           WG_CONFIG: ${{ secrets.WG_CONFIG_NL }}
         run: |
           if [ -z "$WG_CONFIG" ]; then
-            echo "WG_CONFIG_NL no configurado — corriendo sin VPN (0 bytes esperado)"
+            echo "WG_CONFIG_NL no configurado — corriendo sin VPN"
             exit 0
           fi
-          sudo apt-get install -y wireguard-tools resolvconf 2>/dev/null
+          sudo apt-get install -y wireguard-tools 2>/dev/null
           echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wg0.conf
+          # Deshabilitar systemd-resolved para evitar conflicto de DNS
+          sudo systemctl stop systemd-resolved 2>/dev/null || true
+          sudo rm -f /etc/resolv.conf
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          # Levantar WireGuard
           sudo wg-quick up wg0
           sleep 3
-          # Fix DNS — usar Google DNS publico (trafico sigue saliendo por IP holandesa)
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
           IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
           echo "IP tras VPN: $IP"
 
-      # ── Check de disponibilidad ────────────────────────────────────────────
       - name: Verificar disponibilidad
         env:
           URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
@@ -63,7 +60,6 @@ jobs:
           AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
         run: python ovc_once.py
 
-      # ── Desconectar VPN ────────────────────────────────────────────────────
       - name: Desconectar VPN
         if: always()
         run: sudo wg-quick down wg0 2>/dev/null || true
