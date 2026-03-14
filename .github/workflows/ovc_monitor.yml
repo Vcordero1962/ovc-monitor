@@ -40,17 +40,21 @@ jobs:
             exit 0
           fi
           sudo apt-get install -y wireguard-tools 2>/dev/null
-          echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          # Quitar linea DNS del config — la manejamos manualmente para evitar conflictos
+          echo "$WG_CONFIG" | grep -v "^DNS" | sudo tee /etc/wireguard/wg0.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wg0.conf
-          # Deshabilitar systemd-resolved para evitar conflicto de DNS
+          # Deshabilitar systemd-resolved
           sudo systemctl stop systemd-resolved 2>/dev/null || true
           sudo rm -f /etc/resolv.conf
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-          # Levantar WireGuard
+          # Levantar WireGuard (sin DNS en config → no toca resolv.conf)
           sudo wg-quick up wg0
-          sleep 3
+          # Forzar DNS manualmente DESPUES de wg-quick
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf
+          sleep 2
           IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
           echo "IP tras VPN: $IP"
+          cat /etc/resolv.conf
 
       - name: Verificar disponibilidad
         env:
