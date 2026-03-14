@@ -48,28 +48,14 @@ jobs:
           sudo rm -f /etc/resolv.conf
           # Levantar WireGuard (sin DNS en config → no toca resolv.conf)
           sudo wg-quick up wg0
-          # DNS para Playwright/Chromium (usa DoH automaticamente)
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf
+          # DNS: 168.63.129.16 = Azure hypervisor DNS (interceptado a nivel hypervisor,
+          # responde aunque todo el trafico vaya por wg0 con AllowedIPs=0.0.0.0/0)
+          printf "nameserver 168.63.129.16\nnameserver 8.8.8.8\n" | sudo tee /etc/resolv.conf
           sleep 2
-          # Pre-resolver via DoH directo a 1.1.1.1 (TCP/443) — UDP/53 bloqueado en ProtonVPN NL
-          # curl --resolve evita necesitar DNS para llegar a cloudflare-dns.com
-          echo "--- Pre-resolviendo hosts via DoH (1.1.1.1:443) ---"
-          for HOST in t.me api.telegram.org; do
-            IP=$(curl -s --max-time 8 \
-              --resolve "cloudflare-dns.com:443:1.1.1.1" \
-              "https://cloudflare-dns.com/dns-query?name=${HOST}&type=A" \
-              -H "Accept: application/dns-json" \
-              | python3 -c "import sys,json; d=json.load(sys.stdin); print([a['data'] for a in d.get('Answer',[]) if a.get('type')==1][0])" 2>/dev/null || echo "")
-            if [ -n "$IP" ]; then
-              echo "$IP $HOST" | sudo tee -a /etc/hosts
-              echo "OK: $HOST -> $IP"
-            else
-              echo "FALLO DoH para $HOST"
-            fi
-          done
-          # Verificar IP publica (via ipify directo con IP conocida)
-          IP=$(curl -s --max-time 8 --resolve "api.ipify.org:443:54.175.219.8" https://api.ipify.org || echo "?")
+          # Verificar DNS y VPN IP
+          RESOLVED=$(getent hosts t.me 2>/dev/null | awk '{print $1}')
+          echo "DNS test t.me: ${RESOLVED:-FALLO}"
+          IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
           echo "IP tras VPN: $IP"
 
       - name: Verificar disponibilidad
