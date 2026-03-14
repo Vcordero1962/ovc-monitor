@@ -44,11 +44,13 @@ jobs:
             echo "WG_CONFIG_NL no configurado — corriendo sin VPN (0 bytes esperado)"
             exit 0
           fi
-          sudo apt-get install -y wireguard-tools 2>/dev/null
+          sudo apt-get install -y wireguard-tools resolvconf 2>/dev/null
           echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wg0.conf
           sudo wg-quick up wg0
           sleep 3
+          # Fix DNS — usar Google DNS publico (trafico sigue saliendo por IP holandesa)
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
           IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
           echo "IP tras VPN: $IP"
 
