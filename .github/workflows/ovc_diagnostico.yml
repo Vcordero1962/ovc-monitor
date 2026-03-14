@@ -1,0 +1,39 @@
+name: OVC Diagnóstico
+
+on:
+  workflow_dispatch:   # Solo manual — lanzar desde GitHub Actions UI
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: |
+          pip install requests python-dotenv playwright 2>/dev/null || true
+          playwright install --with-deps chromium 2>/dev/null || true
+
+      - name: Ejecutar diagnóstico
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
+          AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+        run: python ovc_diagnostico.py
+
+      - name: Subir screenshot como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diagnostico
+          path: diag_screenshot.png
+          if-no-files-found: ignore
