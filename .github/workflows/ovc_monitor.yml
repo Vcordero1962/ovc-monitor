@@ -49,10 +49,14 @@ jobs:
           # Levantar WireGuard (sin DNS en config → no toca resolv.conf)
           sudo wg-quick up wg0
           # Forzar DNS manualmente DESPUES de wg-quick
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf
+          # 10.2.0.1 = DNS interno ProtonVPN (via tunnel), use-vc fuerza TCP para evitar bloqueo UDP
+          printf "nameserver 10.2.0.1\nnameserver 1.1.1.1\nnameserver 8.8.8.8\noptions use-vc timeout:5\n" | sudo tee /etc/resolv.conf
           sleep 2
-          IP=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
+          # Test DNS
+          echo "--- DNS test ---"
+          nslookup t.me 2>&1 | head -5 || echo "nslookup t.me: FALLO"
+          nslookup citaconsular.es 2>&1 | head -5 || echo "nslookup citaconsular.es: FALLO"
+          IP=$(curl -s --max-time 10 https://api.ipify.org || echo "?")
           echo "IP tras VPN: $IP"
           cat /etc/resolv.conf
 
