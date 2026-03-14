@@ -242,6 +242,13 @@ def verificar_disponibilidad(_page=None) -> bool:
             )
             page = ctx.new_page()
             try:
+                # Paso 1: handshake en la página principal para obtener cookie de sesión
+                page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
+                try:
+                    page.click("button:has-text('Aceptar'), button:has-text('Accept'), button:has-text('Entrar')", timeout=5000)
+                except Exception:
+                    pass  # No hay botón o ya está aceptado
+                # Paso 2: navegar al widget con la cookie ya establecida
                 page.goto(URL_SISTEMA, timeout=35000, wait_until="domcontentloaded")
 
                 # Esperar carga del widget — selectores CSS válidos únicamente

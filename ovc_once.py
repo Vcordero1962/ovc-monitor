@@ -113,6 +113,16 @@ def verificar_sitio() -> bool:
             ctx.add_init_script(STEALTH_SCRIPT)
             page = ctx.new_page()
             try:
+                # Paso 1: handshake en la página principal — obtener cookie de sesión
+                page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
+                time.sleep(random.uniform(1.0, 2.5))
+                try:
+                    page.click("button:has-text('Aceptar'), button:has-text('Accept'), button:has-text('Entrar')", timeout=5000)
+                    time.sleep(random.uniform(0.5, 1.5))
+                except Exception:
+                    pass  # No hay botón o ya aceptado
+
+                # Paso 2: navegar al widget con la cookie ya establecida
                 page.goto(URL_SISTEMA, timeout=35000, wait_until="domcontentloaded")
 
                 # Pausa humana aleatoria tras cargar (0.8 — 3.5 s)
@@ -130,12 +140,17 @@ def verificar_sitio() -> bool:
                 time.sleep(random.uniform(0.3, 1.2))
 
                 contenido = page.content()
+                log(f"  Contenido recibido: {len(contenido)} chars")
 
                 if TEXTO_BLOQUEADO in contenido:
+                    log("  Sitio: bloqueado explicitamente (sin horas)")
                     return False
 
                 indicadores = ["bookitit", "bk-widget", "datetime", "Selecciona", "Confirmar", "horas"]
-                return any(i in contenido for i in indicadores)
+                widget_ok = any(i in contenido for i in indicadores)
+                if not widget_ok:
+                    log("  Sitio: widget vacio (posible bloqueo por IP o captcha)")
+                return widget_ok
 
             except PWT:
                 log("  Sitio: timeout")
