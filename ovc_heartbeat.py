@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """OVC Heartbeat — Mensaje 'estoy vivo' con estadísticas del día a Telegram.
-Estrategia: EDITA el mensaje anterior en lugar de crear uno nuevo.
+Estrategia SIN estado externo:
+  1. Busca el mensaje PINNEADO en el chat del admin.
+  2. Si existe y es del bot → lo EDITA (0 mensajes nuevos).
+  3. Si no → envía nuevo y lo PINNEA.
 Resultado: siempre hay exactamente 1 mensaje 'Estoy vivo' en el chat del admin.
 """
 
@@ -12,25 +15,24 @@ from datetime import datetime, timezone, timedelta
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 # "Estoy vivo" solo al admin — el grupo recibe SOLO alertas de citas
-ADMIN_CHAT_ID      = os.environ.get("ADMIN_CHAT_ID", os.environ.get("TELEGRAM_CHAT_ID", ""))
-GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO        = "Vcordero1962/ovc-monitor"
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", os.environ.get("TELEGRAM_CHAT_ID", ""))
+GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO   = "Vcordero1962/ovc-monitor"
 
-# ID del mensaje anterior a editar (guardado como variable del repo)
-LAST_HB_MSG_ID = os.environ.get("LAST_HB_MSG_ID", "")
-
-# ID único de este run de GitHub Actions
 RUN_ID      = os.environ.get("GITHUB_RUN_ID", "local")
 RUN_ATTEMPT = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
-
-print(f"[HEARTBEAT] RUN_ID={RUN_ID} ATTEMPT={RUN_ATTEMPT} LAST_MSG={LAST_HB_MSG_ID or 'ninguno'}", flush=True)
+RUN_NUMBER  = os.environ.get("GITHUB_RUN_NUMBER", "?")
 
 MIN_INTERVALO_HORAS = 0  # TEST temporal
 
+BASE_TG = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
+print(f"[HEARTBEAT] RUN_ID={RUN_ID} ATTEMPT={RUN_ATTEMPT}", flush=True)
+
+
+# ─── Anti-duplicados ──────────────────────────────────────────────────────────
 
 def ya_enviado_recientemente() -> bool:
-    """Consulta GitHub API — si el heartbeat anterior corrió hace <MIN_INTERVALO_HORAS,
-    este run es un duplicado por backlog del cron y debe abortarse."""
     if not GITHUB_TOKEN:
         return False
     try:
@@ -46,8 +48,7 @@ def ya_enviado_recientemente() -> bool:
         )
         if not r.ok:
             return False
-        runs = r.json().get("workflow_runs", [])
-        for run in runs:
+        for run in r.json().get("workflow_runs", []):
             if str(run.get("id")) == RUN_ID:
                 continue
             created = run.get("created_at", "")
@@ -56,20 +57,21 @@ def ya_enviado_recientemente() -> bool:
             ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
             hace_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60
             if hace_min < MIN_INTERVALO_HORAS * 60:
-                print(f"[HEARTBEAT] SKIP — ya hubo heartbeat hace {hace_min:.0f} min (run {run['id']})", flush=True)
+                print(f"[HEARTBEAT] SKIP — ya hubo heartbeat hace {hace_min:.0f} min", flush=True)
                 return True
         return False
     except Exception as e:
-        print(f"[HEARTBEAT] WARN rate-limit check: {e}", flush=True)
+        print(f"[HEARTBEAT] WARN check: {e}", flush=True)
         return False
 
 
+# ─── Stats ────────────────────────────────────────────────────────────────────
+
 def get_stats_hoy() -> dict:
-    """Consulta GitHub API para obtener estadísticas del bot del día de hoy."""
     if not GITHUB_TOKEN:
         return {}
     try:
-        miami_tz = timezone(timedelta(hours=-4))
+        miami_tz  = timezone(timedelta(hours=-4))
         hoy_inicio = datetime.now(miami_tz).replace(
             hour=0, minute=0, second=0, microsecond=0
         ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -85,14 +87,11 @@ def get_stats_hoy() -> dict:
             timeout=10,
         )
         if not r.ok:
-            print(f"[HEARTBEAT] GitHub API error {r.status_code}", flush=True)
             return {}
-
-        runs = r.json().get("workflow_runs", [])
+        runs       = r.json().get("workflow_runs", [])
         total_hoy  = len(runs)
         exitosos   = sum(1 for x in runs if x.get("conclusion") == "success")
         fallidos   = sum(1 for x in runs if x.get("conclusion") == "failure")
-
         ultimo_hace   = "?"
         ultimo_estado = "?"
         if runs:
@@ -103,7 +102,6 @@ def get_stats_hoy() -> dict:
                 ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
                 minutos = int((datetime.now(timezone.utc) - ts).total_seconds() / 60)
                 ultimo_hace = f"hace {minutos} min"
-
         return {
             "total_hoy":     total_hoy,
             "exitosos":      exitosos,
@@ -116,126 +114,107 @@ def get_stats_hoy() -> dict:
         return {}
 
 
-def guardar_msg_id(msg_id: int):
-    """Guarda el message_id en una variable del repo para el próximo run."""
-    if not GITHUB_TOKEN:
-        return
+# ─── Telegram helpers ─────────────────────────────────────────────────────────
+
+def get_pinned_msg_id() -> int | None:
+    """Obtiene el message_id del mensaje pinneado en el chat del admin."""
     try:
-        # Intentar actualizar variable existente (PATCH)
-        r = requests.patch(
-            f"https://api.github.com/repos/{GITHUB_REPO}/actions/variables/LAST_HB_MSG_ID",
-            json={"name": "LAST_HB_MSG_ID", "value": str(msg_id)},
-            headers={
-                "Authorization": f"Bearer {GITHUB_TOKEN}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=10,
-        )
-        if r.status_code == 404:
-            # Variable no existe aún — crearla (POST)
-            r = requests.post(
-                f"https://api.github.com/repos/{GITHUB_REPO}/actions/variables",
-                json={"name": "LAST_HB_MSG_ID", "value": str(msg_id)},
-                headers={
-                    "Authorization": f"Bearer {GITHUB_TOKEN}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-                timeout=10,
-            )
-        print(f"[HEARTBEAT] LAST_HB_MSG_ID guardado: {msg_id} (status={r.status_code})", flush=True)
+        r = requests.get(f"{BASE_TG}/getChat",
+                         params={"chat_id": ADMIN_CHAT_ID}, timeout=10)
+        if r.ok:
+            pinned = r.json().get("result", {}).get("pinned_message")
+            if pinned:
+                mid = pinned.get("message_id")
+                print(f"[HEARTBEAT] Mensaje pinneado encontrado: id={mid}", flush=True)
+                return mid
     except Exception as e:
-        print(f"[HEARTBEAT] WARN guardar msg_id: {e}", flush=True)
+        print(f"[HEARTBEAT] getChat error: {e}", flush=True)
+    return None
 
 
-def editar_o_enviar(msg: str) -> int | None:
-    """Edita el mensaje anterior si existe, si no envía uno nuevo.
-    Retorna el message_id resultante."""
-    base_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-
-    # Intentar EDITAR el mensaje anterior — resultado: 0 mensajes nuevos en el chat
-    if LAST_HB_MSG_ID:
-        try:
-            r = requests.post(
-                f"{base_url}/editMessageText",
-                json={
-                    "chat_id":    ADMIN_CHAT_ID,
-                    "message_id": int(LAST_HB_MSG_ID),
-                    "text":       msg,
-                },
-                timeout=10,
-            )
-            if r.ok:
-                msg_id = r.json().get("result", {}).get("message_id")
-                print(f"[HEARTBEAT] Mensaje EDITADO — message_id={msg_id}", flush=True)
-                return msg_id
-            else:
-                print(f"[HEARTBEAT] Edit falló ({r.status_code}) — enviando nuevo", flush=True)
-        except Exception as e:
-            print(f"[HEARTBEAT] Edit excepción: {e} — enviando nuevo", flush=True)
-
-    # Enviar mensaje NUEVO (primera vez o si edit falló)
-    print(f"[HEARTBEAT] Enviando mensaje nuevo a admin...", flush=True)
-    r = requests.post(
-        f"{base_url}/sendMessage",
-        json={"chat_id": ADMIN_CHAT_ID, "text": msg, "disable_notification": True},
-        timeout=10,
-    )
-    print(f"[HEARTBEAT] Respuesta: status={r.status_code} ok={r.ok}", flush=True)
+def editar_mensaje(msg_id: int, texto: str) -> bool:
+    """Edita un mensaje existente. Retorna True si tuvo éxito."""
+    r = requests.post(f"{BASE_TG}/editMessageText", json={
+        "chat_id":    ADMIN_CHAT_ID,
+        "message_id": msg_id,
+        "text":       texto,
+    }, timeout=10)
     if r.ok:
-        msg_id = r.json().get("result", {}).get("message_id")
-        print(f"[HEARTBEAT] Telegram message_id={msg_id} — LISTO.", flush=True)
-        return msg_id
-    else:
-        print(f"[HEARTBEAT] ERROR: {r.text[:200]}", flush=True)
-        return None
+        print(f"[HEARTBEAT] Mensaje EDITADO — id={msg_id}", flush=True)
+        return True
+    err = r.json().get("description", r.text[:80])
+    print(f"[HEARTBEAT] Edit falló ({r.status_code}): {err}", flush=True)
+    return False
 
 
-# ─── Guardia anti-duplicados ──────────────────────────────────────────────────
+def enviar_nuevo(texto: str) -> int | None:
+    """Envía un mensaje nuevo. Retorna el message_id."""
+    r = requests.post(f"{BASE_TG}/sendMessage", json={
+        "chat_id":            ADMIN_CHAT_ID,
+        "text":               texto,
+        "disable_notification": True,
+    }, timeout=10)
+    if r.ok:
+        mid = r.json().get("result", {}).get("message_id")
+        print(f"[HEARTBEAT] Mensaje NUEVO enviado — id={mid}", flush=True)
+        return mid
+    print(f"[HEARTBEAT] sendMessage ERROR: {r.text[:100]}", flush=True)
+    return None
+
+
+def pinnear(msg_id: int):
+    """Pinnea el mensaje en el chat para que sea el 'contenedor' del heartbeat."""
+    r = requests.post(f"{BASE_TG}/pinChatMessage", json={
+        "chat_id":              ADMIN_CHAT_ID,
+        "message_id":           msg_id,
+        "disable_notification": True,
+    }, timeout=10)
+    ok = r.ok
+    print(f"[HEARTBEAT] Pin {'OK' if ok else f'falló ({r.status_code}): {r.text[:60]}'}", flush=True)
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
 if ya_enviado_recientemente():
-    print("[HEARTBEAT] Abortando — run duplicado por backlog del cron de GitHub Actions.", flush=True)
+    print("[HEARTBEAT] Abortando — duplicado de cron backlog.", flush=True)
     sys.exit(0)
 
-# ─── Construir mensaje ────────────────────────────────────────────────────────
 miami = datetime.now(timezone(timedelta(hours=-4)))
-fecha = miami.strftime("%d/%m/%Y")
-hora  = miami.strftime("%H:%M:%S")
-
 stats = get_stats_hoy()
 print(f"[HEARTBEAT] Stats: {stats}", flush=True)
 
 if stats:
     emoji_estado = "✅" if stats.get("fallidos", 0) == 0 else "⚠️"
     stats_line = (
-        f"\n{emoji_estado} Checks hoy: {stats.get('exitosos', '?')}/{stats.get('total_hoy', '?')} exitosos"
-        f"\n⏱ Último check: {stats.get('ultimo_hace', '?')} ({stats.get('ultimo_estado', '?')})"
+        f"\n{emoji_estado} Checks hoy: {stats.get('exitosos','?')}/{stats.get('total_hoy','?')} exitosos"
+        f"\n⏱ Ultimo check: {stats.get('ultimo_hace','?')} ({stats.get('ultimo_estado','?')})"
     )
     if stats.get("fallidos", 0) > 0:
         stats_line += f"\n⚠️ Fallidos hoy: {stats['fallidos']}"
 else:
-    stats_line = "\n📊 Stats: no disponibles (sin token)"
+    stats_line = "\nStats: no disponibles"
 
 msg = (
-    "✅ OVC Monitor — Estoy vivo\n"
-    f"📅 {fecha}  🕗 {hora} (Miami)\n"
-    f"🆔 Run: {RUN_ID} | Intento: {RUN_ATTEMPT}\n"
-    "─" * 25 + "\n"
-    "🤖 El bot está activo vigilando\n"
-    "   el sitio de citas 24/7\n"
+    f"✅ OVC Monitor - Estoy vivo  #{RUN_NUMBER}\n"
+    f"📅 {miami.strftime('%d/%m/%Y')}  🕗 {miami.strftime('%H:%M:%S')} (Miami)\n"
+    f"Run: {RUN_ID}\n"
+    "─────────────────────────\n"
+    "🤖 Bot activo vigilando citas 24/7"
     + stats_line + "\n\n"
-    "⏱ Frecuencia: cada ~7 min\n"
-    "🕗 Ventana critica: 8am España = 3am Miami\n\n"
-    "🔴 Sin novedades hasta ahora.\n"
-    "   Cuando haya cita recibirás\n"
-    "   alerta con botón ABRIR AHORA."
+    "⏱ Checks cada ~7 min\n"
+    "🕗 Ventana critica: 8am España = 3am Miami\n"
+    "🔴 Sin novedades. Alerta cuando haya cita."
 )
 
-# ─── Editar o enviar ──────────────────────────────────────────────────────────
-nuevo_msg_id = editar_o_enviar(msg)
-
-# ─── Guardar nuevo message_id para el próximo run ────────────────────────────
-if nuevo_msg_id:
-    guardar_msg_id(nuevo_msg_id)
+# Intentar editar el mensaje pinneado existente
+pinned_id = get_pinned_msg_id()
+if pinned_id and editar_mensaje(pinned_id, msg):
+    print("[HEARTBEAT] LISTO — mensaje pinneado actualizado, sin mensajes nuevos.", flush=True)
+else:
+    # Primera vez o pin perdido — enviar nuevo y pinnearlo
+    nuevo_id = enviar_nuevo(msg)
+    if nuevo_id:
+        pinnear(nuevo_id)
+        print("[HEARTBEAT] LISTO — nuevo mensaje enviado y pinneado.", flush=True)
 
 sys.exit(0)
