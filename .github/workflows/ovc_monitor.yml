@@ -76,7 +76,6 @@ jobs:
           fi
 
       - name: Test proxy (diagnostico)
-        if: ${{ secrets.HTTP_PROXY_URL != '' }}
         env:
           HTTP_PROXY_URL: ${{ secrets.HTTP_PROXY_URL }}
         run: |
