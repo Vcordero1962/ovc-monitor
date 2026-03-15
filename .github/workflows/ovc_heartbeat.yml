@@ -29,6 +29,6 @@ jobs:
       - name: Enviar heartbeat a Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADMIN_CHAT_ID:      ${{ secrets.ADMIN_CHAT_ID }}
           GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
         run: python ovc_heartbeat.py

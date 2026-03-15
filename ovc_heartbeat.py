@@ -8,7 +8,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
+# "Estoy vivo" solo al admin — el grupo recibe SOLO alertas de citas
+ADMIN_CHAT_ID      = os.environ.get("ADMIN_CHAT_ID", os.environ.get("TELEGRAM_CHAT_ID", ""))
 GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO        = "Vcordero1962/ovc-monitor"
 
@@ -151,11 +152,11 @@ msg = (
     "   alerta con botón ABRIR AHORA."
 )
 
-print(f"[HEARTBEAT] Enviando a chat {TELEGRAM_CHAT_ID}...", flush=True)
+print(f"[HEARTBEAT] Enviando a admin {ADMIN_CHAT_ID}...", flush=True)
 
 r = requests.post(
     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-    json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "disable_notification": True},
+    json={"chat_id": ADMIN_CHAT_ID, "text": msg, "disable_notification": True},
     timeout=10,
 )
 
