@@ -207,31 +207,69 @@ def get_tramites_activos() -> list:
 
 
 def enviar_telegram(msg: str, url_boton: str = ""):
-    """Envía alerta al grupo. Si url_boton está definida agrega botón ABRIR AHORA."""
+    """Envía alerta de texto al grupo con botón ABRIR AHORA."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log("Telegram no configurado")
         return
     try:
+        import json as _json
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg}
         url_destino = url_boton or URL_SISTEMA
         if url_destino:
             payload["reply_markup"] = {
-                "inline_keyboard": [[
-                    {"text": "ABRIR AHORA", "url": url_destino}
-                ]]
+                "inline_keyboard": [[{"text": "ABRIR AHORA", "url": url_destino}]]
             }
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json=payload,
-            timeout=10,
+            json=payload, timeout=10,
         )
-        log(f"Telegram: {'OK' if r.ok else f'error {r.status_code} — {r.text[:80]}'}")
+        log(f"Telegram texto: {'OK' if r.ok else f'error {r.status_code} — {r.text[:80]}'}")
     except Exception as e:
         log(f"Telegram error: {e}")
 
 
-def verificar_url_widget(url: str) -> bool:
-    """Verifica si el widget de citaconsular.es tiene disponibilidad para una URL dada."""
+def enviar_foto_telegram(caption: str, foto_bytes: bytes, url_boton: str = ""):
+    """Envía screenshot del widget como foto al grupo con botón ABRIR AHORA.
+    Si el envío de foto falla, cae a texto plano como fallback."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        log("Telegram no configurado")
+        return
+    import json as _json
+    url_destino = url_boton or URL_SISTEMA
+    reply_markup = ""
+    if url_destino:
+        reply_markup = _json.dumps({
+            "inline_keyboard": [[{"text": "ABRIR AHORA", "url": url_destino}]]
+        })
+    try:
+        data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+        if reply_markup:
+            data["reply_markup"] = reply_markup
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+            data=data,
+            files={"photo": ("screenshot.png", foto_bytes, "image/png")},
+            timeout=30,
+        )
+        if r.ok:
+            log("Telegram foto: OK")
+        else:
+            log(f"Telegram foto: error {r.status_code} — {r.text[:80]}")
+            log("  Fallback: enviando texto sin foto")
+            enviar_telegram(caption, url_boton)
+    except Exception as e:
+        log(f"Telegram foto error: {e}")
+        enviar_telegram(caption, url_boton)
+
+
+def verificar_url_widget(url: str) -> tuple:
+    """
+    Verifica si el widget tiene disponibilidad.
+    Retorna (disponible, screenshot_bytes, bloqueado_definitivo):
+      (True,  bytes, False) → cita disponible, bytes = screenshot PNG del widget
+      (False, None,  True)  → "No hay horas disponibles" — no reintentar
+      (False, None,  False) → posible bloqueo temporal / captcha — reintentar
+    """
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWT
 
@@ -321,29 +359,57 @@ def verificar_url_widget(url: str) -> bool:
 
                 if TEXTO_BLOQUEADO in contenido:
                     log("  Sitio: bloqueado explicitamente (sin horas)")
-                    return False
+                    return False, None, True   # bloqueado definitivo — no reintentar
 
                 indicadores = ["bookitit", "bk-widget", "datetime", "Selecciona", "Confirmar", "horas"]
                 widget_ok = any(i in contenido for i in indicadores)
-                if not widget_ok:
+                if widget_ok:
+                    log("  Sitio: CITA DISPONIBLE — capturando screenshot")
+                    screenshot = page.screenshot(type="png", full_page=False)
+                    return True, screenshot, False
+                else:
                     log("  Sitio: widget vacio (posible bloqueo por IP o captcha)")
-                return widget_ok
+                    return False, None, False  # bloqueo temporal — reintentar
 
             except PWT:
                 log("  Sitio: timeout")
-                return False
+                return False, None, False      # timeout — reintentar
             finally:
                 browser.close()
 
     except Exception as e:
         log(f"  Playwright error: {e}")
-        return False
+        return False, None, False
+
+
+def verificar_url_con_retry(url: str, max_intentos: int = 3) -> tuple:
+    """
+    Wrapper con retry exponencial sobre verificar_url_widget.
+    Solo reintenta si fue bloqueo temporal (no en bloqueo definitivo).
+    Delays: intento 1=inmediato, intento 2=+8s, intento 3=+20s
+    Retorna (disponible, screenshot_bytes).
+    """
+    delays = [0, 8, 20]
+    for intento in range(max_intentos):
+        if intento > 0:
+            espera = delays[intento]
+            log(f"  Retry #{intento}/{max_intentos-1} en {espera}s...")
+            time.sleep(espera)
+        disponible, screenshot, bloqueado_definitivo = verificar_url_widget(url)
+        if disponible:
+            return True, screenshot
+        if bloqueado_definitivo:
+            log("  Bloqueo definitivo — sin mas reintentos")
+            return False, None
+        # Bloqueo temporal → continuar el loop
+    log(f"  Agotados {max_intentos} intentos — sin disponibilidad confirmada")
+    return False, None
 
 
 def verificar_sitios_multi(tramites: list) -> list:
     """
     Verifica el widget oficial para cada tramite que tenga URL configurada.
-    Retorna lista de (tramite, nombre, url) con disponibilidad.
+    Retorna lista de (tramite, nombre, url, screenshot_bytes) con disponibilidad.
     """
     hits = []
     for tramite in tramites:
@@ -356,10 +422,12 @@ def verificar_sitios_multi(tramites: list) -> list:
             log(f"  Sitio [{tramite}]: sin URL configurada ({servicio['url_env']} vacío) — omitiendo")
             continue
         log(f"  Verificando sitio [{tramite}] {servicio['nombre']}...")
-        if verificar_url_widget(url):
-            hits.append((tramite, servicio["nombre"], url))
-            # Pausa entre checks para no parecer bot agresivo
-            time.sleep(random.uniform(2.0, 5.0))
+        disponible, screenshot = verificar_url_con_retry(url)
+        if disponible:
+            hits.append((tramite, servicio["nombre"], url, screenshot))
+        # Pausa entre servicios para no parecer bot agresivo
+        if tramites.index(tramite) < len(tramites) - 1:
+            human_sleep(2.0, 5.0)
     return hits
 
 
@@ -455,15 +523,18 @@ if __name__ == "__main__":
     # 1. Sitio oficial (verifica widgets con URL configurada)
     log(f"Verificando sitio oficial ({len(tramites)} servicios)...")
     hits_sitio = verificar_sitios_multi(tramites)
-    for tramite, nombre, url in hits_sitio:
+    for tramite, nombre, url, screenshot in hits_sitio:
         log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
-        enviar_telegram(
+        caption = (
             f"CITA DISPONIBLE — Consulado Espana\n"
             f"Servicio: {nombre}\n"
             f"Detectado: {hora}\n\n"
-            f"Toca el boton para abrir el captcha YA:",
-            url_boton=url,
+            f"Toca el boton para abrir el captcha YA:"
         )
+        if screenshot:
+            enviar_foto_telegram(caption, screenshot, url_boton=url)
+        else:
+            enviar_telegram(caption, url_boton=url)
 
     if hits_sitio:
         sys.exit(0)
