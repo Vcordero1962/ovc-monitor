@@ -408,22 +408,28 @@ def verificar_url_widget(url: str) -> tuple:
                 except Exception as cdp_e:
                     log(f"  CDP (ignorado): {cdp_e}")
 
-                # Calentamiento: construye historial orgánico en el perfil persistente
-                # antes de tocar el sitio del consulado
-                try:
-                    log("  Warm-up: buscando en Google...")
-                    page.goto(
-                        "https://www.google.es/search?q=consulado+espana+cuba+cita+previa",
-                        timeout=20000, wait_until="domcontentloaded",
-                    )
-                    human_sleep(2.0, 4.0)
-                    page.evaluate("window.scrollTo({top: Math.floor(Math.random()*300+100), behavior:'smooth'})")
-                    human_sleep(1.0, 2.5)
-                except Exception:
-                    log("  Warm-up: omitido (sin acceso a Google en este runner)")
+                # Timeouts adaptativos: proxy residencial es más lento que IP directa
+                to_nav    = 55000 if proxy_cfg else 30000   # handshake citaconsular
+                to_widget = 60000 if proxy_cfg else 35000   # carga del widget
+
+                # Calentamiento: solo sin proxy (Google bloquea proxies residenciales)
+                if not proxy_cfg:
+                    try:
+                        log("  Warm-up: buscando en Google...")
+                        page.goto(
+                            "https://www.google.es/search?q=consulado+espana+cuba+cita+previa",
+                            timeout=20000, wait_until="domcontentloaded",
+                        )
+                        human_sleep(2.0, 4.0)
+                        page.evaluate("window.scrollTo({top: Math.floor(Math.random()*300+100), behavior:'smooth'})")
+                        human_sleep(1.0, 2.5)
+                    except Exception:
+                        log("  Warm-up: omitido")
+                else:
+                    log("  Warm-up: omitido (proxy activo — Google lo bloquearia)")
 
                 # Paso 1: handshake — obtener cookie de sesión como usuario real
-                page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
+                page.goto("https://www.citaconsular.es", timeout=to_nav, wait_until="domcontentloaded")
                 human_sleep(1.0, 2.8)
 
                 # Scroll humano — Imperva detecta si no hay movimiento tras la carga
@@ -439,7 +445,7 @@ def verificar_url_widget(url: str) -> tuple:
                     pass
 
                 # Paso 2: navegar al widget
-                page.goto(url, timeout=35000, wait_until="domcontentloaded")
+                page.goto(url, timeout=to_widget, wait_until="domcontentloaded")
                 human_sleep(1.2, 4.0)
 
                 page.evaluate("window.scrollTo({top: Math.floor(Math.random()*150+30), behavior:'smooth'})")
