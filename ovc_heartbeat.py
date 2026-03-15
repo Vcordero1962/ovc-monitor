@@ -19,7 +19,7 @@ RUN_ATTEMPT = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
 
 print(f"[HEARTBEAT] RUN_ID={RUN_ID} ATTEMPT={RUN_ATTEMPT} PID={os.getpid()}", flush=True)
 
-MIN_INTERVALO_HORAS = 0  # TEST — rastreo de ráfaga (restaurar a 2)
+MIN_INTERVALO_HORAS = 2  # No enviar si ya se envió hace menos de 2h
 
 
 def ya_enviado_recientemente() -> bool:
