@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  ovc-sentinel:
+    build: .
+    container_name: ovc-sentinel
+    restart: unless-stopped
+    env_file:
+      - ../.env          # Lee las credenciales del .env del proyecto OVC
+    environment:
+      - GITHUB_REPO=Vcordero1962/ovc-monitor
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
