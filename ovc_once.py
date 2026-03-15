@@ -258,19 +258,33 @@ def get_tramites_activos() -> list:
     return tramites
 
 
-def enviar_telegram(msg: str, url_boton: str = ""):
-    """Envía alerta de texto al grupo con botón ABRIR AHORA."""
+def _build_keyboard(url_sitio: str) -> list:
+    """
+    Construye teclado inline para alertas del grupo.
+    Fila 1: botón principal RESERVAR AHORA (grande, llamativo)
+    Fila 2: botón canal AVC (referencia informativa)
+    """
+    teclado = []
+    if url_sitio:
+        teclado.append([{"text": "🔴  RESERVAR AHORA  🔴", "url": url_sitio}])
+    teclado.append([{"text": "📢 Ver Canal AVC", "url": URL_AVC}])
+    return teclado
+
+
+def enviar_telegram(msg: str, url_boton: str = "", parse_mode: str = "HTML"):
+    """Envía alerta de texto al grupo con botones RESERVAR + AVC."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log("Telegram no configurado")
         return
     try:
         import json as _json
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg}
         url_destino = url_boton or URL_SISTEMA
-        if url_destino:
-            payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": "ABRIR AHORA", "url": url_destino}]]
-            }
+        payload = {
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "text":       msg,
+            "parse_mode": parse_mode,
+            "reply_markup": {"inline_keyboard": _build_keyboard(url_destino)},
+        }
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             json=payload, timeout=10,
@@ -281,22 +295,21 @@ def enviar_telegram(msg: str, url_boton: str = ""):
 
 
 def enviar_foto_telegram(caption: str, foto_bytes: bytes, url_boton: str = ""):
-    """Envía screenshot del widget como foto al grupo con botón ABRIR AHORA.
+    """Envía screenshot del widget como foto al grupo con botones RESERVAR + AVC.
     Si el envío de foto falla, cae a texto plano como fallback."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log("Telegram no configurado")
         return
     import json as _json
     url_destino = url_boton or URL_SISTEMA
-    reply_markup = ""
-    if url_destino:
-        reply_markup = _json.dumps({
-            "inline_keyboard": [[{"text": "ABRIR AHORA", "url": url_destino}]]
-        })
+    reply_markup = _json.dumps({"inline_keyboard": _build_keyboard(url_destino)})
     try:
-        data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
-        if reply_markup:
-            data["reply_markup"] = reply_markup
+        data = {
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "caption":    caption,
+            "parse_mode": "HTML",
+            "reply_markup": reply_markup,
+        }
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
             data=data,
@@ -660,10 +673,12 @@ if __name__ == "__main__":
         for tramite, nombre, url, screenshot in hits_sitio:
             log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
             caption = (
-                f"CITA DISPONIBLE — Consulado Espana\n"
-                f"Servicio: {nombre}\n"
-                f"Detectado: {hora}\n\n"
-                f"Toca el boton para abrir el captcha YA:"
+                f"🚨 <b>CITA DISPONIBLE</b> 🚨\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📋 <b>Servicio:</b> {nombre}\n"
+                f"🕐 <b>Detectado:</b> {hora}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ Tienes ~2 min. Abre YA y llena el captcha."
             )
             if screenshot:
                 enviar_foto_telegram(caption, screenshot, url_boton=url)
@@ -683,11 +698,13 @@ if __name__ == "__main__":
             log(f"*** Alerta AVC: {nombre} ***")
             url_servicio = os.getenv(SERVICIOS[tramite]["url_env"], URL_SISTEMA)
             enviar_telegram(
-                f"ALERTA TEMPRANA — Canal AVC\n"
-                f"Servicio: {nombre}\n"
-                f"{hora}\n\n"
-                f"{detalle[:200]}\n\n"
-                f"Vigila el sitio — toca para abrir:",
+                f"⚠️ <b>ALERTA TEMPRANA — Canal AVC</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📋 <b>Servicio:</b> {nombre}\n"
+                f"🕐 {hora}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📢 {detalle[:200]}\n\n"
+                f"Pueden abrir citas pronto — mantente atento.",
                 url_boton=url_servicio,
             )
     else:
