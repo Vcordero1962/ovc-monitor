@@ -39,7 +39,7 @@ OVC/
 - **Repo**: https://github.com/Vcordero1962/ovc-monitor
 - **Visibilidad**: Privado
 - **Token (PAT)**: guardado en .env local (variable GITHUB_TOKEN o GITHUB_PAT)
-- **Secretos configurados**: URL_SISTEMA, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, AVC_TRAMITE
+- **Secretos configurados**: URL_SISTEMA, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, AVC_TRAMITE, HTTP_PROXY_URL, SITIO_DIRECTO_ENABLED, WG_CONFIG_NL
 
 ---
 
@@ -58,12 +58,25 @@ OVC/
 
 | Fix | Archivo | Descripción |
 |---|---|---|
-| Sleep aleatorio | `ovc_once.py` L~200 | `random.randint(10, 90)` antes de consultar |
-| UA rotativo | `ovc_once.py` L~35 | 6 user-agents reales Chrome/Firefox/Safari |
-| Viewport random | `ovc_once.py` L~45 | 5 resoluciones reales |
-| Stealth script | `ovc_once.py` L~52 | Elimina `navigator.webdriver` |
+| Sleep gaussiano | `ovc_once.py` L~632 | `random.gauss(45, 20)` antes de consultar |
+| UA rotativo | `ovc_once.py` L~106 | 13 user-agents reales Chrome/Firefox/Safari/Mobile |
+| Viewport random | `ovc_once.py` L~128 | 7 resoluciones desktop+mobile |
+| Stealth script dinámico | `ovc_once.py` L~138 | Elimina `webdriver`, plugins, hardware fingerprint |
+| Perfil Chromium persistente | `ovc_once.py` L~356 | `launch_persistent_context` + `actions/cache@v4` |
+| CDP latency throttling | `ovc_once.py` L~407 | 40-80ms RTT (emula hogar vs datacenter 1-5ms) |
+| Session age management | `ovc_once.py` L~202 | Limpia cookies si sesión > 25 min |
+| Warm-up navigation | `ovc_once.py` L~427 | Google search antes de consulado (solo sin proxy) |
 | Cron irregular | `ovc_monitor.yml` | Minutos: 0,7,13,19,26,32,38,44,51,57 |
-| Botón ABRIR AHORA | `ovc_once.py` L~70 | `reply_markup` inline keyboard |
+| Botón ABRIR AHORA | `ovc_once.py` L~251 | `reply_markup` inline keyboard |
+
+## Proxy — Estado actual
+
+- **`SITIO_DIRECTO_ENABLED=0`** — solo canal AVC activo (datacenter no bypassea Imperva)
+- **Proxy configurado** (datacenter, no activo): `http://PROXY_URL_REDACTED` (Webshare free, España/Madrid)
+- **Para activar check directo**: necesitas proxy RESIDENCIAL real (Webshare Static Residential ~$3/mes)
+  1. Actualizar `HTTP_PROXY_URL` secret con nueva IP residencial
+  2. `gh secret set SITIO_DIRECTO_ENABLED --body "1" --repo Vcordero1962/ovc-monitor`
+  3. Subir `timeout-minutes` a 10 en `ovc_monitor.yml`
 
 ---
 
@@ -121,7 +134,8 @@ C:\Users\aemes\anaconda3\python.exe -B ovc_monitor.py
 
 | Fecha | Cambios |
 |---|---|
-| Mar 15 2026 | Grupo Telegram "OVC Alertas Consulado" (-5127911137) — alertas a multiples miembros |
+| Mar 15 2026 (tarde) | Proxy Webshare + SITIO_DIRECTO_ENABLED flag — AVC-only mode (59s/run) |
+| Mar 15 2026 (mañana) | Grupo Telegram "OVC Alertas Consulado" (-5127911137) — alertas a multiples miembros |
 | Mar 14 2026 | Fix WiFi + Fix DNS GitHub Actions (168.63.129.16) + auto-fallback wg0 sin handshake |
 | Mar 13 2026 | Setup inicial GitHub Actions, anti-bot, heartbeat, repo privado |
 | Mar 12 2026 | Bot local — primera alerta real (8 mensajes CITA DISPONIBLE falsos positivos) |
