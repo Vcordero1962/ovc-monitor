@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import time
+import json
 import random
 import requests
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,15 @@ URL_SISTEMA        = os.getenv("URL_SISTEMA", "")   # Legacy — URL del widget 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEGA" o "LMD"
+
+# ─── Perfil persistente de Chromium ──────────────────────────────────────────
+# El user-data-dir se cachea en GitHub Actions entre runs.
+# Resultado: el sitio ve una sesión que "ya existía", no un browser virgen.
+# CHROMIUM_PROFILE_DIR se pasa como env var desde el workflow.
+_DEFAULT_PROFILE = Path.home() / ".config" / "chromium-ovc"
+USER_DATA_DIR  = Path(os.getenv("CHROMIUM_PROFILE_DIR", str(_DEFAULT_PROFILE)))
+SESSION_STAMP  = USER_DATA_DIR / "ovc_session.json"   # dentro del dir → se cachea junto
+SESSION_MAX_MIN = 25  # minutos — tokens del consulado duran ~20-30 min
 
 URL_AVC         = "https://t.me/s/AsesorVirtualC"
 TEXTO_BLOQUEADO = "No hay horas disponibles"
@@ -181,6 +191,30 @@ def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def get_session_age_min() -> float:
+    """Retorna la edad de la sesión en minutos, o None si no hay stamp."""
+    try:
+        data = json.loads(SESSION_STAMP.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data["timestamp"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() / 60
+    except Exception:
+        return None
+
+
+def update_session_stamp():
+    """Actualiza el timestamp de la sesión activa dentro del user-data-dir."""
+    try:
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        SESSION_STAMP.write_text(
+            json.dumps({"timestamp": datetime.now(timezone.utc).isoformat()}),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        log(f"  stamp error: {e}")
+
+
 def human_sleep(min_s: float, max_s: float):
     """Sleep con distribución normal — más natural que uniforme.
     La mayoría de las esperas caen cerca de la media, con outliers ocasionales."""
@@ -265,6 +299,8 @@ def enviar_foto_telegram(caption: str, foto_bytes: bytes, url_boton: str = ""):
 def verificar_url_widget(url: str) -> tuple:
     """
     Verifica si el widget tiene disponibilidad.
+    Anti-WAF: perfil persistente (user-data-dir cacheado), CDP latency throttling,
+    warm-up navegacion, session age management, stealth script dinámico.
     Retorna (disponible, screenshot_bytes, bloqueado_definitivo):
       (True,  bytes, False) → cita disponible, bytes = screenshot PNG del widget
       (False, None,  True)  → "No hay horas disponibles" — no reintentar
@@ -273,16 +309,29 @@ def verificar_url_widget(url: str) -> tuple:
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWT
 
-        ua       = random.choice(USER_AGENTS)
-        viewport = random.choice(VIEWPORTS)
+        ua        = random.choice(USER_AGENTS)
+        viewport  = random.choice(VIEWPORTS)
         is_mobile = viewport["width"] < 500
         log(f"  UA: {ua[:70]}...")
         log(f"  Viewport: {viewport['width']}x{viewport['height']} {'(mobile)' if is_mobile else '(desktop)'}")
 
         stealth = _make_stealth_script(viewport)
 
+        # Gestión de edad de sesión
+        session_age = get_session_age_min()
+        if session_age is not None:
+            log(f"  Sesión cache: {session_age:.1f} min de antigüedad")
+        else:
+            log("  Sesión cache: nueva (sin stamp)")
+
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
         with sync_playwright() as p:
-            browser = p.chromium.launch(
+            # launch_persistent_context: reutiliza cookies/storage del run anterior
+            # (el user-data-dir se cachea en GitHub Actions entre runs via actions/cache)
+            # --disable-quic: fuerza HTTP/2 sobre TCP, evita HTTP/3-QUIC
+            ctx = p.chromium.launch_persistent_context(
+                str(USER_DATA_DIR),
                 headless=True,
                 args=[
                     "--no-sandbox",
@@ -296,10 +345,9 @@ def verificar_url_widget(url: str) -> tuple:
                     "--disable-translate",
                     "--disable-background-timer-throttling",
                     "--disable-renderer-backgrounding",
+                    "--disable-quic",
                     f"--window-size={viewport['width']},{viewport['height']}",
                 ],
-            )
-            ctx = browser.new_context(
                 user_agent=ua,
                 viewport=viewport,
                 locale="es-ES",
@@ -318,13 +366,50 @@ def verificar_url_widget(url: str) -> tuple:
             )
             # Stealth dinámico — fingerprint ajustado al viewport elegido
             ctx.add_init_script(stealth)
+
+            # Limpiar cookies si la sesión expiró (tokens del consulado duran ~20-30 min)
+            if session_age is not None and session_age > SESSION_MAX_MIN:
+                log(f"  Sesión expirada ({session_age:.1f} min > {SESSION_MAX_MIN} min) — limpiando cookies")
+                ctx.clear_cookies()
+
             page = ctx.new_page()
             try:
+                # CDP: emular latencia residencial — diferencia vs datacenter puro
+                # Un datacenter tiene 1-5 ms de latencia; una casa tiene 40-80 ms
+                try:
+                    cdp     = ctx.new_cdp_session(page)
+                    dl_bps  = random.randint(1_500_000, 4_000_000)   # 1.5–4 Mbps
+                    ul_bps  = random.randint(500_000,   1_500_000)    # 0.5–1.5 Mbps
+                    latency = random.randint(40, 80)                   # 40–80 ms residencial
+                    cdp.send("Network.emulateNetworkConditions", {
+                        "offline":            False,
+                        "downloadThroughput": dl_bps // 8,
+                        "uploadThroughput":   ul_bps // 8,
+                        "latency":            latency,
+                    })
+                    log(f"  CDP latencia: {dl_bps//1000} Kbps DL, {latency} ms RTT")
+                except Exception as cdp_e:
+                    log(f"  CDP (ignorado): {cdp_e}")
+
+                # Calentamiento: construye historial orgánico en el perfil persistente
+                # antes de tocar el sitio del consulado
+                try:
+                    log("  Warm-up: buscando en Google...")
+                    page.goto(
+                        "https://www.google.es/search?q=consulado+espana+cuba+cita+previa",
+                        timeout=20000, wait_until="domcontentloaded",
+                    )
+                    human_sleep(2.0, 4.0)
+                    page.evaluate("window.scrollTo({top: Math.floor(Math.random()*300+100), behavior:'smooth'})")
+                    human_sleep(1.0, 2.5)
+                except Exception:
+                    log("  Warm-up: omitido (sin acceso a Google en este runner)")
+
                 # Paso 1: handshake — obtener cookie de sesión como usuario real
                 page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
                 human_sleep(1.0, 2.8)
 
-                # Simular scroll humano al llegar — Imperva lo detecta si no hay movimiento
+                # Scroll humano — Imperva detecta si no hay movimiento tras la carga
                 page.evaluate("window.scrollTo({top: Math.floor(Math.random()*200+50), behavior:'smooth'})")
                 human_sleep(0.4, 1.0)
                 page.evaluate("window.scrollTo({top: 0, behavior:'smooth'})")
@@ -340,7 +425,6 @@ def verificar_url_widget(url: str) -> tuple:
                 page.goto(url, timeout=35000, wait_until="domcontentloaded")
                 human_sleep(1.2, 4.0)
 
-                # Scroll simulado en el widget — comportamiento humano
                 page.evaluate("window.scrollTo({top: Math.floor(Math.random()*150+30), behavior:'smooth'})")
                 human_sleep(0.5, 1.2)
 
@@ -352,10 +436,12 @@ def verificar_url_widget(url: str) -> tuple:
                 except PWT:
                     pass
 
-                # Micro-pausa final antes de leer el DOM
                 human_sleep(0.4, 1.5)
                 contenido = page.content()
                 log(f"  Contenido recibido: {len(contenido)} chars")
+
+                # Actualizar stamp — la sesión fue usada ahora mismo
+                update_session_stamp()
 
                 if TEXTO_BLOQUEADO in contenido:
                     log("  Sitio: bloqueado explicitamente (sin horas)")
@@ -375,7 +461,7 @@ def verificar_url_widget(url: str) -> tuple:
                 log("  Sitio: timeout")
                 return False, None, False      # timeout — reintentar
             finally:
-                browser.close()
+                ctx.close()
 
     except Exception as e:
         log(f"  Playwright error: {e}")

@@ -25,6 +25,16 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-v1
 
+      - name: Cache perfil Chromium (sesion persistente anti-WAF)
+        uses: actions/cache@v4
+        with:
+          path: ~/.config/chromium-ovc
+          # run_id como clave: siempre guarda el perfil actualizado del run actual
+          # restore-keys: restaura el perfil más reciente disponible
+          key: chromium-profile-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            chromium-profile-${{ runner.os }}-
+
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
@@ -67,10 +77,11 @@ jobs:
 
       - name: Verificar disponibilidad
         env:
-          URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-          AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+          URL_SISTEMA:           ${{ secrets.URL_SISTEMA }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          AVC_TRAMITE:           ${{ secrets.AVC_TRAMITE }}
+          CHROMIUM_PROFILE_DIR:  /home/runner/.config/chromium-ovc
         run: python ovc_once.py
 
       - name: Desconectar VPN
