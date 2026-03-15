@@ -23,6 +23,7 @@ load_dotenv(Path(__file__).parent / ".env")
 URL_SISTEMA        = os.getenv("URL_SISTEMA", "")   # Legacy — URL del widget LEGA
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+ADMIN_CHAT_ID      = os.getenv("ADMIN_CHAT_ID", "")           # chat personal admin — alerta directa
 AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEGA" o "LMD"
 
 # ─── Proxy residencial ────────────────────────────────────────────────────────
@@ -325,6 +326,31 @@ def enviar_foto_telegram(caption: str, foto_bytes: bytes, url_boton: str = ""):
     except Exception as e:
         log(f"Telegram foto error: {e}")
         enviar_telegram(caption, url_boton)
+
+
+def _enviar_alerta_admin(msg: str, url_boton: str = ""):
+    """Envía alerta directa al chat personal del admin (ADMIN_CHAT_ID).
+    Los chats personales siempre producen sonido — garantiza que el admin escuche la alarma
+    aunque las notificaciones del grupo estén en silencio en el celular."""
+    if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
+        return
+    try:
+        payload = {
+            "chat_id":    ADMIN_CHAT_ID,
+            "text":       msg,
+            "parse_mode": "HTML",
+        }
+        if url_boton:
+            payload["reply_markup"] = {
+                "inline_keyboard": [[{"text": "🔴  RESERVAR AHORA  🔴", "url": url_boton}]]
+            }
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json=payload, timeout=10,
+        )
+        log(f"Telegram admin-directo: {'OK' if r.ok else f'error {r.status_code}'}")
+    except Exception as e:
+        log(f"Telegram admin-directo error: {e}")
 
 
 def verificar_url_widget(url: str) -> tuple:
@@ -684,6 +710,7 @@ if __name__ == "__main__":
                 enviar_foto_telegram(caption, screenshot, url_boton=url)
             else:
                 enviar_telegram(caption, url_boton=url)
+            _enviar_alerta_admin(caption, url_boton=url)
         if hits_sitio:
             sys.exit(0)
         log("Sitio oficial: sin disponibilidad")
@@ -697,16 +724,17 @@ if __name__ == "__main__":
         for tramite, nombre, detalle in hits_avc:
             log(f"*** Alerta AVC: {nombre} ***")
             url_servicio = os.getenv(SERVICIOS[tramite]["url_env"], URL_SISTEMA)
-            enviar_telegram(
+            avc_msg = (
                 f"⚠️ <b>ALERTA TEMPRANA — Canal AVC</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"📋 <b>Servicio:</b> {nombre}\n"
                 f"🕐 {hora}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"📢 {detalle[:200]}\n\n"
-                f"Pueden abrir citas pronto — mantente atento.",
-                url_boton=url_servicio,
+                f"Pueden abrir citas pronto — mantente atento."
             )
+            enviar_telegram(avc_msg, url_boton=url_servicio)
+            _enviar_alerta_admin(avc_msg, url_boton=url_servicio)
     else:
         log("  AVC: sin novedad")
 
