@@ -84,36 +84,110 @@ AVC_ALERTAS = [
     "ABRIRAN CITAS", "HABRAN TURNOS",
 ]
 
-# Pool de user-agents reales — rota en cada ejecución
+# Pool de user-agents reales — desktop + mobile — rota en cada ejecución
 USER_AGENTS = [
+    # Desktop Chrome — Windows
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    # Desktop Chrome — Mac
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    # Desktop Firefox
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+    # Desktop Safari — Mac
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    # Mobile Chrome — Android (simula usuario móvil real)
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.64 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.101 Mobile Safari/537.36",
+    # Mobile Safari — iPhone
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1",
 ]
 
-# Resoluciones comunes de pantalla para aparentar usuario real
+# Resoluciones — desktop + mobile
 VIEWPORTS = [
     {"width": 1920, "height": 1080},
     {"width": 1440, "height": 900},
     {"width": 1366, "height": 768},
     {"width": 1280, "height": 800},
     {"width": 1536, "height": 864},
+    {"width": 390,  "height": 844},   # iPhone 14
+    {"width": 412,  "height": 915},   # Pixel 7
 ]
 
-# Script para ocultar que es Playwright (elimina navigator.webdriver)
-STEALTH_SCRIPT = """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
-window.chrome = { runtime: {} };
+def _make_stealth_script(viewport: dict) -> str:
+    """Genera el script de stealth con los valores reales del viewport actual."""
+    w = viewport["width"]
+    h = viewport["height"]
+    # Simular plataforma según si es mobile (ancho < 500)
+    platform = "Linux armv8l" if w < 500 else "Win32"
+    cores = random.choice([4, 8, 12, 16])
+    mem   = random.choice([4, 8, 16])
+    return f"""
+// Eliminar marcadores de automatización
+Object.defineProperty(navigator, 'webdriver', {{ get: () => undefined }});
+delete window.__playwright;
+delete window.__pwInitScripts;
+try {{ delete window._phantom; }} catch(e) {{}}
+try {{ delete window.callPhantom; }} catch(e) {{}}
+
+// Plugins — simular browser real
+Object.defineProperty(navigator, 'plugins', {{
+    get: () => {{
+        const arr = [1, 2, 3, 4, 5];
+        arr.item = (i) => arr[i] || null;
+        arr.namedItem = (n) => null;
+        arr.refresh = () => {{}};
+        return arr;
+    }}
+}});
+
+// Idiomas y plataforma
+Object.defineProperty(navigator, 'languages', {{ get: () => ['es-ES', 'es', 'en-US', 'en'] }});
+Object.defineProperty(navigator, 'platform',  {{ get: () => '{platform}' }});
+
+// Hardware — simular máquina real
+Object.defineProperty(navigator, 'hardwareConcurrency', {{ get: () => {cores} }});
+Object.defineProperty(navigator, 'deviceMemory',        {{ get: () => {mem}   }});
+
+// Screen — ajustar al viewport del contexto
+Object.defineProperty(screen, 'width',       {{ get: () => {w}      }});
+Object.defineProperty(screen, 'height',      {{ get: () => {h}      }});
+Object.defineProperty(screen, 'availWidth',  {{ get: () => {w}      }});
+Object.defineProperty(screen, 'availHeight', {{ get: () => {h} - 40 }});
+Object.defineProperty(screen, 'colorDepth',  {{ get: () => 24       }});
+Object.defineProperty(screen, 'pixelDepth',  {{ get: () => 24       }});
+
+// APIs Chrome completas — sin chrome = detectado como bot
+window.chrome = {{
+    runtime:    {{ id: undefined, connect: () => {{}}, sendMessage: () => {{}} }},
+    loadTimes:  function() {{ return {{}}; }},
+    csi:        function() {{ return {{}}; }},
+    app:        {{ isInstalled: false }},
+}};
+
+// Permisos — respuesta realista
+const _origQuery = window.navigator.permissions.query.bind(navigator.permissions);
+window.navigator.permissions.query = (p) =>
+    p.name === 'notifications'
+        ? Promise.resolve({{ state: Notification.permission }})
+        : _origQuery(p);
 """
 
 
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def human_sleep(min_s: float, max_s: float):
+    """Sleep con distribución normal — más natural que uniforme.
+    La mayoría de las esperas caen cerca de la media, con outliers ocasionales."""
+    media = (min_s + max_s) / 2
+    std   = (max_s - min_s) / 4
+    t = max(min_s, min(max_s, random.gauss(media, std)))
+    time.sleep(t)
 
 
 def get_tramites_activos() -> list:
@@ -163,35 +237,74 @@ def verificar_url_widget(url: str) -> bool:
 
         ua       = random.choice(USER_AGENTS)
         viewport = random.choice(VIEWPORTS)
-        log(f"  UA: {ua[:60]}...")
-        log(f"  Viewport: {viewport['width']}x{viewport['height']}")
+        is_mobile = viewport["width"] < 500
+        log(f"  UA: {ua[:70]}...")
+        log(f"  Viewport: {viewport['width']}x{viewport['height']} {'(mobile)' if is_mobile else '(desktop)'}")
+
+        stealth = _make_stealth_script(viewport)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--disable-extensions",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-popup-blocking",
+                    "--disable-translate",
+                    "--disable-background-timer-throttling",
+                    "--disable-renderer-backgrounding",
+                    f"--window-size={viewport['width']},{viewport['height']}",
+                ],
             )
             ctx = browser.new_context(
                 user_agent=ua,
                 viewport=viewport,
                 locale="es-ES",
                 timezone_id="America/Havana",
+                is_mobile=is_mobile,
+                has_touch=is_mobile,
+                extra_http_headers={
+                    "Accept-Language":           "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest":            "document",
+                    "Sec-Fetch-Mode":            "navigate",
+                    "Sec-Fetch-Site":            "none",
+                    "Cache-Control":             "max-age=0",
+                },
             )
-            ctx.add_init_script(STEALTH_SCRIPT)
+            # Stealth dinámico — fingerprint ajustado al viewport elegido
+            ctx.add_init_script(stealth)
             page = ctx.new_page()
             try:
-                # Paso 1: handshake en la página principal — obtener cookie de sesión
+                # Paso 1: handshake — obtener cookie de sesión como usuario real
                 page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
-                time.sleep(random.uniform(1.0, 2.5))
+                human_sleep(1.0, 2.8)
+
+                # Simular scroll humano al llegar — Imperva lo detecta si no hay movimiento
+                page.evaluate("window.scrollTo({top: Math.floor(Math.random()*200+50), behavior:'smooth'})")
+                human_sleep(0.4, 1.0)
+                page.evaluate("window.scrollTo({top: 0, behavior:'smooth'})")
+                human_sleep(0.3, 0.8)
+
                 try:
                     page.click("button:has-text('Aceptar'), button:has-text('Accept'), button:has-text('Entrar')", timeout=5000)
-                    time.sleep(random.uniform(0.5, 1.5))
+                    human_sleep(0.5, 1.5)
                 except Exception:
                     pass
 
-                # Paso 2: navegar al widget con la cookie ya establecida
+                # Paso 2: navegar al widget
                 page.goto(url, timeout=35000, wait_until="domcontentloaded")
-                time.sleep(random.uniform(0.8, 3.5))
+                human_sleep(1.2, 4.0)
+
+                # Scroll simulado en el widget — comportamiento humano
+                page.evaluate("window.scrollTo({top: Math.floor(Math.random()*150+30), behavior:'smooth'})")
+                human_sleep(0.5, 1.2)
 
                 try:
                     page.wait_for_selector(
@@ -201,7 +314,8 @@ def verificar_url_widget(url: str) -> bool:
                 except PWT:
                     pass
 
-                time.sleep(random.uniform(0.3, 1.2))
+                # Micro-pausa final antes de leer el DOM
+                human_sleep(0.4, 1.5)
                 contenido = page.content()
                 log(f"  Contenido recibido: {len(contenido)} chars")
 
@@ -256,7 +370,18 @@ def verificar_avc_todos(tramites: list) -> list:
     """
     try:
         ua = random.choice(USER_AGENTS)
-        headers = {"User-Agent": ua}
+        headers = {
+            "User-Agent":                ua,
+            "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language":           "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding":           "gzip, deflate, br",
+            "Connection":                "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest":            "document",
+            "Sec-Fetch-Mode":            "navigate",
+            "Sec-Fetch-Site":            "none",
+            "Cache-Control":             "max-age=0",
+        }
         resp = requests.get(URL_AVC, headers=headers, timeout=15)
         if not resp.ok:
             log(f"  AVC no accesible: HTTP {resp.status_code}")
@@ -314,8 +439,9 @@ def verificar_avc_todos(tramites: list) -> list:
 
 
 if __name__ == "__main__":
-    # Sleep aleatorio al inicio — rompe el patrón regular del cron
-    espera = random.randint(10, 90)
+    # Sleep gaussiano al inicio — rompe el patrón regular del cron
+    # Distribución normal: mayoría entre 30-60s, outliers ocasionales
+    espera = max(10, min(90, int(random.gauss(45, 20))))
     log(f"Anti-deteccion: esperando {espera}s antes de consultar...")
     time.sleep(espera)
 
