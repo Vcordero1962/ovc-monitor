@@ -860,7 +860,9 @@ if __name__ == "__main__":
                 f"📋 <b>{nombre}</b>\n"
                 f"⏰ {hora}\n\n"
                 f"📢 {detalle[:180]}\n\n"
-                f"Ten el formulario listo. <b>Actua en cuanto abran.</b>"
+                f"Ten el formulario listo. <b>Actua en cuanto abran.</b>\n\n"
+                f"💡 El consulado suele liberar citas a las <b>8:00 AM hora de España</b> "
+                f"(3:00 AM Miami / 7:00 AM UTC). Este bot vigila esa ventana cada 7 min."
             )
 
             # Card PIL como imagen de alerta (no hay screenshot del sitio en modo AVC)
