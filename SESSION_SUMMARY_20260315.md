@@ -20,8 +20,8 @@ Imperva bloquea IPs de datacenter (Azure/GitHub) — necesitábamos salida por I
 - Diagnóstico en workflow: curl test IP directa vs IP por proxy antes de ejecutar Python
 
 ### 3. Webshare.io — credenciales reales obtenidas
-- Cuenta: `cheo06112@gmail.com` | user: `rfdaygeo` | pass: `PASS_REDACTED`
-- Proxy España Madrid: `64.137.96.74:6641` — confirmado funcional (curl retorna IP proxy)
+- Cuenta: `cheo06112@gmail.com` | credenciales en GitHub Secret `HTTP_PROXY_URL` (no commitear)
+- Proxy España Madrid: ver GitHub Secret `HTTP_PROXY_URL` — confirmado funcional (curl retorna IP proxy)
 - **Diagnóstico**: proxies free de Webshare = datacenter, NO residencial → Imperva sigue bloqueando
 - Configurado en GitHub Secret `HTTP_PROXY_URL` y `.env` local (con backups UK)
 
@@ -89,5 +89,5 @@ Imperva bloquea IPs de datacenter (Azure/GitHub) — necesitábamos salida por I
 ## ⚠️ Alertas
 
 - **WiFi del usuario**: incidente Mar 14 — Docker Desktop Hyper-V adapter causa desconexiones ocasionales. No es problema del código OVC. Si vuelve: deshabilitar adaptadores virtuales en Administrador de dispositivos.
-- **Webshare proxies free**: se renuevan cada X tiempo — si el bot falla con proxy, verificar que `64.137.96.74:6641` sigue activo en dashboard.webshare.io
+- **Webshare proxies free**: se renuevan cada X tiempo — si el bot falla con proxy, verificar IP activa en dashboard.webshare.io y actualizar GitHub Secret `HTTP_PROXY_URL`
 - **GitHub Actions quota**: ~50 min/día × 15 días = ~750 min gastados de 2,000/mes. OK por ahora.

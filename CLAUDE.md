@@ -72,7 +72,7 @@ OVC/
 ## Proxy — Estado actual
 
 - **`SITIO_DIRECTO_ENABLED=0`** — solo canal AVC activo (datacenter no bypassea Imperva)
-- **Proxy configurado** (datacenter, no activo): `http://PROXY_URL_REDACTED` (Webshare free, España/Madrid)
+- **Proxy configurado** (datacenter, no activo): credenciales en GitHub Secret `HTTP_PROXY_URL` (Webshare free, España/Madrid)
 - **Para activar check directo**: necesitas proxy RESIDENCIAL real (Webshare Static Residential ~$3/mes)
   1. Actualizar `HTTP_PROXY_URL` secret con nueva IP residencial
   2. `gh secret set SITIO_DIRECTO_ENABLED --body "1" --repo Vcordero1962/ovc-monitor`
