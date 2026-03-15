@@ -9,7 +9,8 @@ Qué verifica cada 30 minutos:
   2. Heartbeat     — ¿ejecutó ovc_heartbeat.yml en las últimas 5 horas?
   3. Quota         — ¿quedan minutos de GitHub Actions para el mes?
 
-Si detecta problema → alerta Telegram al grupo.
+Si detecta problema → alerta Telegram SOLO al admin (SENTINEL_CHAT_ID).
+Las alertas de cita disponible siguen yendo al grupo (TELEGRAM_CHAT_ID).
 """
 
 import os
@@ -21,12 +22,13 @@ from pathlib import Path
 # ─── Config desde env ────────────────────────────────────────────────────────
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")       # grupo — citas
+SENTINEL_CHAT_ID   = os.getenv("SENTINEL_CHAT_ID", "")       # admin — alertas técnicas
 GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO        = os.getenv("GITHUB_REPO", "Vcordero1962/ovc-monitor")
 
 # Umbrales de alerta
-MAX_MIN_DESDE_ULTIMO_RUN_BOT  = 20   # minutos — si el bot no corrió en 20 min → alerta
+MAX_MIN_DESDE_ULTIMO_RUN_BOT  = 60   # minutos — GitHub Actions free puede tener gaps de ~45 min
 MAX_HORAS_DESDE_HEARTBEAT     = 5    # horas   — si heartbeat no llegó en 5h → alerta
 CHECK_INTERVAL_MIN             = 30   # minutos entre cada ciclo del sentinel
 
@@ -47,19 +49,27 @@ def log(msg: str):
 
 
 def telegram(msg: str, urgente: bool = False):
-    """Envía mensaje al grupo Telegram."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log("ERROR: Telegram no configurado")
+    """Envía alerta técnica SOLO al admin (SENTINEL_CHAT_ID).
+    Si no está configurado, cae al grupo como fallback."""
+    if not TELEGRAM_BOT_TOKEN:
+        log("ERROR: TELEGRAM_BOT_TOKEN no configurado")
         return False
+
+    # Alertas técnicas del sentinel → solo al admin
+    chat_id = SENTINEL_CHAT_ID if SENTINEL_CHAT_ID else TELEGRAM_CHAT_ID
+    if not chat_id:
+        log("ERROR: ni SENTINEL_CHAT_ID ni TELEGRAM_CHAT_ID configurados")
+        return False
+
     prefix = "🚨 " if urgente else "ℹ️ "
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": prefix + msg},
+            json={"chat_id": chat_id, "text": prefix + msg},
             timeout=10,
         )
         ok = r.ok
-        log(f"Telegram {'OK' if ok else f'ERROR {r.status_code}'}: {msg[:60]}...")
+        log(f"Telegram→admin {'OK' if ok else f'ERROR {r.status_code}'}: {msg[:60]}...")
         return ok
     except Exception as e:
         log(f"Telegram excepción: {e}")
@@ -215,7 +225,8 @@ if __name__ == "__main__":
     log("=" * 50)
     log("OVC SENTINEL v1.0 — Iniciando")
     log(f"Repo: {GITHUB_REPO}")
-    log(f"Telegram chat: {TELEGRAM_CHAT_ID}")
+    log(f"Alertas técnicas → admin: {SENTINEL_CHAT_ID or '(fallback grupo)'}")
+    log(f"Alertas cita disponible → grupo: {TELEGRAM_CHAT_ID}")
     log(f"Intervalo: {CHECK_INTERVAL_MIN} min")
     log(f"GitHub Token: {'configurado' if GITHUB_TOKEN else 'NO configurado'}")
     log("=" * 50)

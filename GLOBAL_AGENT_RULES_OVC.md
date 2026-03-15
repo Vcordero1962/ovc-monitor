@@ -206,7 +206,7 @@ citaconsular.es → widget activo
 
 ### 5.1 El sentinel monitorea
 
-1. **GitHub Actions** — ¿El bot ejecutó en los últimos 15 min?
+1. **GitHub Actions** — ¿El bot ejecutó en los últimos 60 min? (GH free tiene gaps de ~45 min)
 2. **Heartbeat** — ¿Llegó heartbeat en las últimas 5 horas?
 3. **Quota GH Actions** — ¿Quedan minutos disponibles?
 
