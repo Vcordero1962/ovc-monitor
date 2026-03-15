@@ -29,9 +29,19 @@ AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEG
 # GitHub Actions usa IPs de datacenter → Imperva las bloquea directamente.
 # Un proxy residencial europeo hace que el tráfico salga desde una IP de hogar real.
 # Formato: http://usuario:contraseña@host:puerto
-# Webshare.io rotating: http://user-country-es:pass@p.webshare.io:80
+# Webshare.io static residential: http://user:pass@IP:PORT
 # Si está vacío → el bot corre sin proxy (útil para AVC, que no bloquea DCs)
 HTTP_PROXY_URL = os.getenv("HTTP_PROXY_URL", "")
+
+# ─── Control de verificación directa del sitio ───────────────────────────────
+# SITIO_DIRECTO_ENABLED=1 → verifica el widget de citaconsular.es con Playwright
+# SITIO_DIRECTO_ENABLED=0 → salta el check directo, solo usa canal AVC
+#
+# Cuándo usar 0: cuando el proxy disponible es de datacenter (Imperva lo bloquea
+#   igual que GitHub Actions) — ahorra 3+ min por run en reintentos inútiles.
+# Cuándo usar 1: cuando tengas un proxy RESIDENCIAL real (Webshare Static Residential,
+#   Oxylabs, BrightData, etc.) — IP de hogar europeo que Imperva no detecta como bot.
+SITIO_DIRECTO_ENABLED = os.getenv("SITIO_DIRECTO_ENABLED", "1") == "1"
 
 # ─── Perfil persistente de Chromium ──────────────────────────────────────────
 # El user-data-dir se cachea en GitHub Actions entre runs.
@@ -641,24 +651,29 @@ if __name__ == "__main__":
         log("WARN: ninguna URL de widget configurada — solo se verificara AVC")
 
     # 1. Sitio oficial (verifica widgets con URL configurada)
-    log(f"Verificando sitio oficial ({len(tramites)} servicios)...")
-    hits_sitio = verificar_sitios_multi(tramites)
-    for tramite, nombre, url, screenshot in hits_sitio:
-        log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
-        caption = (
-            f"CITA DISPONIBLE — Consulado Espana\n"
-            f"Servicio: {nombre}\n"
-            f"Detectado: {hora}\n\n"
-            f"Toca el boton para abrir el captcha YA:"
-        )
-        if screenshot:
-            enviar_foto_telegram(caption, screenshot, url_boton=url)
-        else:
-            enviar_telegram(caption, url_boton=url)
-
-    if hits_sitio:
-        sys.exit(0)
-    log("Sitio oficial: sin disponibilidad")
+    #    Requiere proxy RESIDENCIAL para bypassar Imperva desde GitHub Actions.
+    #    Si SITIO_DIRECTO_ENABLED=0 se salta completamente (ahorra 3+ min/run).
+    hits_sitio = []
+    if SITIO_DIRECTO_ENABLED:
+        log(f"Verificando sitio oficial ({len(tramites)} servicios)...")
+        hits_sitio = verificar_sitios_multi(tramites)
+        for tramite, nombre, url, screenshot in hits_sitio:
+            log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
+            caption = (
+                f"CITA DISPONIBLE — Consulado Espana\n"
+                f"Servicio: {nombre}\n"
+                f"Detectado: {hora}\n\n"
+                f"Toca el boton para abrir el captcha YA:"
+            )
+            if screenshot:
+                enviar_foto_telegram(caption, screenshot, url_boton=url)
+            else:
+                enviar_telegram(caption, url_boton=url)
+        if hits_sitio:
+            sys.exit(0)
+        log("Sitio oficial: sin disponibilidad")
+    else:
+        log("Sitio oficial: omitido (SITIO_DIRECTO_ENABLED=0 — requiere proxy residencial)")
 
     # 2. Canal AVC (una sola petición, verifica todos los tramites)
     log(f"Verificando canal AVC ({len(tramites)} servicios)...")
