@@ -9,6 +9,9 @@ concurrency:
   group: heartbeat-unico
   cancel-in-progress: true   # Si ya hay uno corriendo, cancela el nuevo — nunca duplicados
 
+permissions:
+  actions: write   # Necesario para leer/escribir variables del repo (LAST_HB_MSG_ID)
+
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
@@ -28,7 +31,9 @@ jobs:
 
       - name: Enviar heartbeat a Telegram
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ADMIN_CHAT_ID:      ${{ secrets.ADMIN_CHAT_ID }}
-          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID:       ${{ secrets.ADMIN_CHAT_ID }}
+          GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          # Último message_id guardado — para borrar el mensaje anterior
+          LAST_HB_MSG_ID:      ${{ vars.LAST_HB_MSG_ID }}
         run: python ovc_heartbeat.py
