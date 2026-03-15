@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 OVC-Once — Check único para GitHub Actions / nube
+- Monitorea TODOS los servicios consulares simultáneamente (AVC_TRAMITE=ALL)
 - Anti-detección: sleep aleatorio + user-agent rotativo + viewport random
 - Alerta Telegram con botón "ABRIR AHORA" (un toque → captcha directo)
 """
@@ -18,21 +19,70 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-URL_SISTEMA        = os.getenv("URL_SISTEMA", "")
+URL_SISTEMA        = os.getenv("URL_SISTEMA", "")   # Legacy — URL del widget LEGA
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
-AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "LMD").upper()
+AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEGA" o "LMD"
 
 URL_AVC         = "https://t.me/s/AsesorVirtualC"
 TEXTO_BLOQUEADO = "No hay horas disponibles"
 
-AVC_KEYWORDS = {
-    "LMD":        ["LMD", "LEGALIZACI", "CREDENCIALES"],
-    "PASAPORTE":  ["PASAPORTE"],
-    "MATRIMONIO": ["MATRIMONIO", "TRANSCRIPCI"],
-    "VISADO":     ["VISADO"],
+# ─── Catálogo de servicios consulares ────────────────────────────────────────
+# Cada servicio tiene:
+#   nombre    → texto amigable para alertas
+#   keywords  → palabras clave a buscar en el canal AVC
+#   url_env   → variable de entorno con la URL del widget de citaconsular.es
+#
+# Para agregar la URL de un servicio nuevo:
+#   1. Consigue la URL del widget en citaconsular.es
+#   2. Agrega al .env: URL_PASAPORTE=https://www.citaconsular.es/...
+#   3. El bot la usará automáticamente en el siguiente run
+
+SERVICIOS = {
+    "LEGA": {
+        "nombre":   "Legalizaciones (LEGA)",
+        "keywords": ["LEGALIZACI", "LEGALIZ", "LEGA"],
+        "url_env":  "URL_LEGA",
+    },
+    "LMD": {
+        "nombre":   "Ley Memoria Democratica (LMD)",
+        "keywords": ["LMD", "MEMORIA DEMOCR", "CREDENCIALES LMD", "CIUDADAN"],
+        "url_env":  "URL_LMD",
+    },
+    "PASAPORTE": {
+        "nombre":   "Pasaporte / DNI",
+        "keywords": ["PASAPORTE", "PASAPORTES", "DNI", "DOCUMENTO NACIONAL"],
+        "url_env":  "URL_PASAPORTE",
+    },
+    "VISADO": {
+        "nombre":   "Visados",
+        "keywords": ["VISADO", "VISADOS", "VISA SCHENGEN", "VISA NACIONAL"],
+        "url_env":  "URL_VISADO",
+    },
+    "MATRIMONIO": {
+        "nombre":   "Matrimonio / Registro Civil",
+        "keywords": ["MATRIMONIO", "TRANSCRIPCI", "REGISTRO CIVIL", "ACTA MATRIMON"],
+        "url_env":  "URL_MATRIMONIO",
+    },
+    "NACIMIENTO": {
+        "nombre":   "Nacimiento / Fe de Vida",
+        "keywords": ["NACIMIENTO", "FE DE VIDA", "ACTA DE NACI", "ACTA NACIM"],
+        "url_env":  "URL_NACIMIENTO",
+    },
+    "NOTARIAL": {
+        "nombre":   "Tramites Notariales / Apostilla",
+        "keywords": ["NOTARIAL", "APOSTILLA", "PODER NOTARIAL", "NOTARI"],
+        "url_env":  "URL_NOTARIAL",
+    },
 }
-AVC_ALERTAS = ["CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA"]
+
+# Frases del canal AVC que indican que están por abrir citas
+AVC_ALERTAS = [
+    "CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA",
+    "HABRAN CITAS", "SE ABRIRAN", "DISPONIBLES", "HABILITADAS",
+    "APERTURA", "ABRIRA CITAS", "NUEVAS CITAS", "FECHA DE APERTURA",
+    "ABRIRAN CITAS", "HABRAN TURNOS",
+]
 
 # Pool de user-agents reales — rota en cada ejecución
 USER_AGENTS = [
@@ -66,17 +116,34 @@ def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def enviar_telegram(msg: str, con_boton: bool = False):
-    """Envía alerta. Si con_boton=True agrega botón ABRIR AHORA para ir directo al captcha."""
+def get_tramites_activos() -> list:
+    """
+    Retorna lista de códigos de tramite a vigilar.
+    ALL → todos los servicios.
+    "LMD,LEGA" → solo esos dos.
+    "LMD" → solo LMD (backwards compat).
+    """
+    if AVC_TRAMITE == "ALL":
+        return list(SERVICIOS.keys())
+    tramites = [t.strip() for t in AVC_TRAMITE.split(",") if t.strip() in SERVICIOS]
+    if not tramites:
+        log(f"WARN: AVC_TRAMITE='{AVC_TRAMITE}' no reconocido — usando ALL")
+        return list(SERVICIOS.keys())
+    return tramites
+
+
+def enviar_telegram(msg: str, url_boton: str = ""):
+    """Envía alerta al grupo. Si url_boton está definida agrega botón ABRIR AHORA."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log("Telegram no configurado")
         return
     try:
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": msg}
-        if con_boton and URL_SISTEMA:
+        url_destino = url_boton or URL_SISTEMA
+        if url_destino:
             payload["reply_markup"] = {
                 "inline_keyboard": [[
-                    {"text": "ABRIR AHORA", "url": URL_SISTEMA}
+                    {"text": "ABRIR AHORA", "url": url_destino}
                 ]]
             }
         r = requests.post(
@@ -89,7 +156,8 @@ def enviar_telegram(msg: str, con_boton: bool = False):
         log(f"Telegram error: {e}")
 
 
-def verificar_sitio() -> bool:
+def verificar_url_widget(url: str) -> bool:
+    """Verifica si el widget de citaconsular.es tiene disponibilidad para una URL dada."""
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWT
 
@@ -109,7 +177,6 @@ def verificar_sitio() -> bool:
                 locale="es-ES",
                 timezone_id="America/Havana",
             )
-            # Inyectar stealth antes de cargar cualquier página
             ctx.add_init_script(STEALTH_SCRIPT)
             page = ctx.new_page()
             try:
@@ -120,12 +187,10 @@ def verificar_sitio() -> bool:
                     page.click("button:has-text('Aceptar'), button:has-text('Accept'), button:has-text('Entrar')", timeout=5000)
                     time.sleep(random.uniform(0.5, 1.5))
                 except Exception:
-                    pass  # No hay botón o ya aceptado
+                    pass
 
                 # Paso 2: navegar al widget con la cookie ya establecida
-                page.goto(URL_SISTEMA, timeout=35000, wait_until="domcontentloaded")
-
-                # Pausa humana aleatoria tras cargar (0.8 — 3.5 s)
+                page.goto(url, timeout=35000, wait_until="domcontentloaded")
                 time.sleep(random.uniform(0.8, 3.5))
 
                 try:
@@ -136,9 +201,7 @@ def verificar_sitio() -> bool:
                 except PWT:
                     pass
 
-                # Otra micro-pausa antes de leer el DOM
                 time.sleep(random.uniform(0.3, 1.2))
-
                 contenido = page.content()
                 log(f"  Contenido recibido: {len(contenido)} chars")
 
@@ -163,20 +226,47 @@ def verificar_sitio() -> bool:
         return False
 
 
-def verificar_avc() -> tuple:
+def verificar_sitios_multi(tramites: list) -> list:
+    """
+    Verifica el widget oficial para cada tramite que tenga URL configurada.
+    Retorna lista de (tramite, nombre, url) con disponibilidad.
+    """
+    hits = []
+    for tramite in tramites:
+        servicio = SERVICIOS[tramite]
+        url = os.getenv(servicio["url_env"], "")
+        # Fallback: si es LEGA y no tiene URL_LEGA → usar URL_SISTEMA legacy
+        if not url and tramite == "LEGA" and URL_SISTEMA:
+            url = URL_SISTEMA
+        if not url:
+            log(f"  Sitio [{tramite}]: sin URL configurada ({servicio['url_env']} vacío) — omitiendo")
+            continue
+        log(f"  Verificando sitio [{tramite}] {servicio['nombre']}...")
+        if verificar_url_widget(url):
+            hits.append((tramite, servicio["nombre"], url))
+            # Pausa entre checks para no parecer bot agresivo
+            time.sleep(random.uniform(2.0, 5.0))
+    return hits
+
+
+def verificar_avc_todos(tramites: list) -> list:
+    """
+    Verifica el canal AVC para todos los tramites de la lista en UNA sola petición.
+    Retorna lista de (tramite, nombre, fragmento) para cada servicio con alerta.
+    """
     try:
         ua = random.choice(USER_AGENTS)
         headers = {"User-Agent": ua}
         resp = requests.get(URL_AVC, headers=headers, timeout=15)
         if not resp.ok:
             log(f"  AVC no accesible: HTTP {resp.status_code}")
-            return False, ""
+            return []
 
         html = resp.text
         ahora  = datetime.now(timezone.utc)
         limite = ahora - timedelta(hours=48)
-        keywords = AVC_KEYWORDS.get(AVC_TRAMITE, [])
 
+        # Extraer mensajes recientes (últimas 48h)
         patron = re.findall(
             r'<time[^>]+datetime="([^"]+)"[^>]*>.*?'
             r'<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
@@ -196,59 +286,78 @@ def verificar_avc() -> tuple:
 
         if not html_reciente.strip():
             log("  AVC: sin mensajes en 48h")
-            return False, ""
+            return []
 
         bloque = html_reciente.upper()
-        if any(kw in bloque for kw in keywords) and any(a in bloque for a in AVC_ALERTAS):
-            fragmento = re.sub(r'<[^>]+>', '', html_reciente)[:300].strip()
-            return True, fragmento
 
-        return False, ""
+        # Verificar si hay alguna frase de alerta en el bloque completo
+        hay_alerta_general = any(a in bloque for a in AVC_ALERTAS)
+        if not hay_alerta_general:
+            log("  AVC: sin frases de alerta en el canal")
+            return []
+
+        # Buscar qué tramites específicos se mencionan junto a la alerta
+        hits = []
+        for tramite in tramites:
+            servicio  = SERVICIOS[tramite]
+            keywords  = servicio["keywords"]
+            if any(kw in bloque for kw in keywords):
+                fragmento = re.sub(r'<[^>]+>', '', html_reciente)[:300].strip()
+                log(f"  AVC HIT [{tramite}]: {servicio['nombre']}")
+                hits.append((tramite, servicio["nombre"], fragmento))
+
+        return hits
 
     except Exception as e:
         log(f"  AVC error: {e}")
-        return False, ""
+        return []
 
 
 if __name__ == "__main__":
-    if not URL_SISTEMA:
-        log("ERROR: URL_SISTEMA no definida")
-        sys.exit(1)
-
     # Sleep aleatorio al inicio — rompe el patrón regular del cron
-    # El sitio ve peticiones a horas distintas cada vez
     espera = random.randint(10, 90)
     log(f"Anti-deteccion: esperando {espera}s antes de consultar...")
     time.sleep(espera)
 
+    tramites = get_tramites_activos()
     hora = datetime.now().strftime("%H:%M del %d/%m/%Y")
-    log(f"=== OVC check — {hora} — tramite: {AVC_TRAMITE} ===")
+    log(f"=== OVC check — {hora} — tramites: {', '.join(tramites)} ===")
 
-    # 1. Sitio oficial
-    log("Verificando sitio oficial...")
-    if verificar_sitio():
-        log("*** CITA DISPONIBLE en sitio oficial! ***")
+    if not URL_SISTEMA and not any(os.getenv(SERVICIOS[t]["url_env"], "") for t in tramites):
+        log("WARN: ninguna URL de widget configurada — solo se verificara AVC")
+
+    # 1. Sitio oficial (verifica widgets con URL configurada)
+    log(f"Verificando sitio oficial ({len(tramites)} servicios)...")
+    hits_sitio = verificar_sitios_multi(tramites)
+    for tramite, nombre, url in hits_sitio:
+        log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
         enviar_telegram(
             f"CITA DISPONIBLE — Consulado Espana\n"
+            f"Servicio: {nombre}\n"
             f"Detectado: {hora}\n\n"
             f"Toca el boton para abrir el captcha YA:",
-            con_boton=True,
+            url_boton=url,
         )
-        sys.exit(0)
-    log("Sitio: sin disponibilidad")
 
-    # 2. Canal AVC
-    log(f"Verificando canal AVC ({AVC_TRAMITE})...")
-    hay_alerta, detalle = verificar_avc()
-    if hay_alerta:
-        log("*** Alerta en canal AVC! ***")
-        enviar_telegram(
-            f"ALERTA TEMPRANA — Canal AVC\n"
-            f"Tramite: {AVC_TRAMITE} | {hora}\n\n"
-            f"{detalle[:200]}\n\n"
-            f"Vigila el sitio — toca para abrir:",
-            con_boton=True,
-        )
+    if hits_sitio:
+        sys.exit(0)
+    log("Sitio oficial: sin disponibilidad")
+
+    # 2. Canal AVC (una sola petición, verifica todos los tramites)
+    log(f"Verificando canal AVC ({len(tramites)} servicios)...")
+    hits_avc = verificar_avc_todos(tramites)
+    if hits_avc:
+        for tramite, nombre, detalle in hits_avc:
+            log(f"*** Alerta AVC: {nombre} ***")
+            url_servicio = os.getenv(SERVICIOS[tramite]["url_env"], URL_SISTEMA)
+            enviar_telegram(
+                f"ALERTA TEMPRANA — Canal AVC\n"
+                f"Servicio: {nombre}\n"
+                f"{hora}\n\n"
+                f"{detalle[:200]}\n\n"
+                f"Vigila el sitio — toca para abrir:",
+                url_boton=url_servicio,
+            )
     else:
         log("  AVC: sin novedad")
 
