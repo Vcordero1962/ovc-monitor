@@ -111,7 +111,7 @@ print(f"[HEARTBEAT] Enviando a chat {TELEGRAM_CHAT_ID}...", flush=True)
 
 r = requests.post(
     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-    json={"chat_id": TELEGRAM_CHAT_ID, "text": msg},
+    json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "disable_notification": True},
     timeout=10,
 )
 

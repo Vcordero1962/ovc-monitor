@@ -2,7 +2,7 @@ name: OVC Heartbeat Diario
 
 on:
   schedule:
-    - cron: '15 1,5,9,13,17,21 * * *'  # cada 4h fuera de pico: ~9pm,1am,5am,9am,1pm,5pm Miami (UTC-4)
+    - cron: '15 13,21 * * *'  # 2x/dia: ~9:15am y 5:15pm Miami (UTC-4=13,21 UTC)
   workflow_dispatch:
 
 concurrency:
