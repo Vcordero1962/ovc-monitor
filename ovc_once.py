@@ -380,7 +380,7 @@ def _build_keyboard(url_sitio: str, url_avc: str = URL_AVC) -> list:
     """
     teclado = []
     if url_sitio:
-        teclado.append([{"text": "⚡  ENTRAR Y RESERVAR CITA  ⚡", "url": url_sitio}])
+        teclado.append([{"text": "🔴🔴  RESERVAR CITA — ENTRA YA  🔴🔴", "url": url_sitio}])
     teclado.append([{"text": "📢 Ver aviso oficial en AVC", "url": url_avc}])
     return teclado
 
@@ -458,7 +458,7 @@ def _enviar_alerta_admin(msg: str, url_boton: str = "", silencioso: bool = False
         }
         if url_boton:
             payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": "🔴  ENTRAR Y RESERVAR  🔴", "url": url_boton}]]
+                "inline_keyboard": [[{"text": "🔴🔴  RESERVAR CITA — ENTRA YA  🔴🔴", "url": url_boton}]]
             }
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
