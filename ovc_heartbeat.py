@@ -23,7 +23,7 @@ RUN_ID      = os.environ.get("GITHUB_RUN_ID", "local")
 RUN_ATTEMPT = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
 RUN_NUMBER  = os.environ.get("GITHUB_RUN_NUMBER", "?")
 
-MIN_INTERVALO_HORAS = 0  # TEST temporal
+MIN_INTERVALO_HORAS = 2  # No enviar si ya se envió hace menos de 2h
 
 BASE_TG = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
