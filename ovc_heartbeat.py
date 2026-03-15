@@ -18,6 +18,44 @@ RUN_ATTEMPT = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
 
 print(f"[HEARTBEAT] RUN_ID={RUN_ID} ATTEMPT={RUN_ATTEMPT} PID={os.getpid()}", flush=True)
 
+MIN_INTERVALO_HORAS = 2  # No enviar si ya se envió hace menos de 2h
+
+
+def ya_enviado_recientemente() -> bool:
+    """Consulta GitHub API — si el heartbeat anterior corrió hace <MIN_INTERVALO_HORAS,
+    este run es un duplicado por backlog del cron y debe abortarse."""
+    if not GITHUB_TOKEN:
+        return False
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/ovc_heartbeat.yml/runs",
+            params={"per_page": 5, "status": "success"},
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=10,
+        )
+        if not r.ok:
+            return False
+        runs = r.json().get("workflow_runs", [])
+        for run in runs:
+            if str(run.get("id")) == RUN_ID:
+                continue  # Ignorar este mismo run
+            created = run.get("created_at", "")
+            if not created:
+                continue
+            ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            hace_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+            if hace_min < MIN_INTERVALO_HORAS * 60:
+                print(f"[HEARTBEAT] SKIP — ya hubo heartbeat hace {hace_min:.0f} min (run {run['id']})", flush=True)
+                return True
+        return False
+    except Exception as e:
+        print(f"[HEARTBEAT] WARN rate-limit check: {e}", flush=True)
+        return False
+
 
 def get_stats_hoy() -> dict:
     """Consulta GitHub API para obtener estadísticas del bot del día de hoy."""
@@ -71,6 +109,11 @@ def get_stats_hoy() -> dict:
         print(f"[HEARTBEAT] Stats error: {e}", flush=True)
         return {}
 
+
+# Guardia anti-duplicados — abortar si ya hubo heartbeat reciente (cron backlog)
+if ya_enviado_recientemente():
+    print("[HEARTBEAT] Abortando — run duplicado por backlog del cron de GitHub Actions.", flush=True)
+    sys.exit(0)
 
 # Hora Miami (UTC-4 EDT)
 miami = datetime.now(timezone(timedelta(hours=-4)))
