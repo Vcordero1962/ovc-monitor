@@ -18,6 +18,14 @@ import time
 import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TZ_MIAMI = ZoneInfo("America/New_York")  # EDT = UTC-4 (verano) / EST = UTC-5 (invierno)
+
+
+def now_miami() -> datetime:
+    """Hora actual en Miami (maneja automáticamente EDT/EST)."""
+    return datetime.now(TZ_MIAMI)
 
 # ─── Config desde env ────────────────────────────────────────────────────────
 
@@ -44,7 +52,7 @@ _estado = {
 
 
 def log(msg: str):
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = now_miami().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [SENTINEL] {msg}", flush=True)
 
 
@@ -162,7 +170,7 @@ def check_quota() -> tuple[bool, str]:
 
 def ciclo_verificacion():
     """Un ciclo completo de verificación. Llama a las 3 comprobaciones."""
-    ahora = datetime.now().strftime("%H:%M del %d/%m")
+    ahora = now_miami().strftime("%H:%M del %d/%m")
     log(f"=== Ciclo verificación — {ahora} ===")
 
     if not GITHUB_TOKEN:
@@ -185,7 +193,7 @@ def ciclo_verificacion():
         if _estado["alerta_bot_enviada"]:
             telegram(f"OVC SENTINEL — Bot recuperado ✅\n{bot_desc}")
         _estado["alerta_bot_enviada"] = False
-        _estado["ultimo_run_ok"] = datetime.now()
+        _estado["ultimo_run_ok"] = now_miami()
 
     # 2. Verificar heartbeat
     hb_ok, hb_desc = check_heartbeat_workflow()
@@ -202,7 +210,7 @@ def ciclo_verificacion():
         if _estado["alerta_heartbeat_enviada"]:
             telegram(f"OVC SENTINEL — Heartbeat OK ✅\n{hb_desc}")
         _estado["alerta_heartbeat_enviada"] = False
-        _estado["ultimo_heartbeat_ok"] = datetime.now()
+        _estado["ultimo_heartbeat_ok"] = now_miami()
 
     log("=== Ciclo completado ===")
 
@@ -212,7 +220,7 @@ def arranque_sentinela():
     log("Sentinel arrancando...")
     telegram(
         f"🛡️ OVC Sentinel ACTIVO\n\n"
-        f"Monitoreo iniciado — {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+        f"Monitoreo iniciado — {now_miami().strftime('%d/%m/%Y %H:%M')} (Miami)\n"
         f"Checks cada {CHECK_INTERVAL_MIN} min\n\n"
         f"Vigilando:\n"
         f"  • Bot monitor (max {MAX_MIN_DESDE_ULTIMO_RUN_BOT} min sin correr)\n"
