@@ -259,16 +259,129 @@ def get_tramites_activos() -> list:
     return tramites
 
 
-def _build_keyboard(url_sitio: str) -> list:
+def _generar_card_alerta(tipo: str, nombre: str, hora: str, detalle: str = ""):
+    """Genera imagen PNG branded para la alerta — enviar como foto en Telegram.
+
+    tipo:
+      'SITIO' → rojo urgente (cita confirmada en el sitio oficial)
+      'AVC'   → naranja (alerta temprana del canal AVC)
+
+    Retorna bytes PNG o None si Pillow no está disponible.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+
+        W, H = 800, 420
+
+        if tipo == "SITIO":
+            bg_top    = (120, 0, 0)
+            bg_bottom = (60, 0, 0)
+            accent    = (255, 60, 60)
+            header    = "🚨  CITA DISPONIBLE AHORA"
+            cta_color = (255, 210, 210)
+            cta_texto = "Tienes ~2 minutos. Entra YA y completa el captcha."
+        else:
+            bg_top    = (110, 55, 0)
+            bg_bottom = (55, 25, 0)
+            accent    = (255, 165, 0)
+            header    = "⚠️  ALERTA TEMPRANA — CANAL AVC"
+            cta_color = (255, 230, 160)
+            cta_texto = "Ten el formulario listo. Actua en cuanto abran."
+
+        img  = Image.new("RGB", (W, H), bg_top)
+        draw = ImageDraw.Draw(img)
+
+        # Gradiente horizontal (líneas)
+        for y in range(H):
+            r = bg_top[0] + int((bg_bottom[0] - bg_top[0]) * y / H)
+            g = bg_top[1] + int((bg_bottom[1] - bg_top[1]) * y / H)
+            b = bg_top[2] + int((bg_bottom[2] - bg_top[2]) * y / H)
+            draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+        # Fuente — intenta Bold, fallback default
+        FONT_PATHS = [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        ]
+
+        def _font(size):
+            for p in FONT_PATHS:
+                try:
+                    return ImageFont.truetype(p, size)
+                except Exception:
+                    pass
+            try:
+                return ImageFont.load_default(size=size)
+            except Exception:
+                return ImageFont.load_default()
+
+        f_header   = _font(34)
+        f_servicio = _font(46)
+        f_hora     = _font(26)
+        f_cta      = _font(30)
+        f_detalle  = _font(20)
+        f_footer   = _font(18)
+
+        # Barra acento superior
+        draw.rectangle([(0, 0), (W, 8)], fill=accent)
+
+        # Header
+        draw.text((40, 24), header, fill=accent, font=f_header)
+
+        # Separador
+        draw.line([(40, 86), (W - 40, 86)], fill=accent, width=2)
+
+        # Nombre servicio
+        draw.text((40, 100), nombre, fill=(255, 255, 255), font=f_servicio)
+
+        # Hora
+        draw.text((40, 165), f"Detectado:  {hora}", fill=(190, 190, 190), font=f_hora)
+
+        # Separador
+        draw.line([(40, 210), (W - 40, 210)], fill=(90, 90, 90), width=1)
+
+        # CTA
+        draw.text((40, 228), cta_texto, fill=cta_color, font=f_cta)
+
+        # Detalle AVC (opcional)
+        if detalle and tipo == "AVC":
+            txt = detalle[:90] + ("..." if len(detalle) > 90 else "")
+            draw.text((40, 278), txt, fill=(160, 160, 160), font=f_detalle)
+
+        # Footer
+        draw.rectangle([(0, H - 48), (W, H)], fill=(15, 15, 15))
+        draw.text(
+            (40, H - 34),
+            "OVC — Monitor Consular 24/7  |  Verificacion automatica cada 7 min",
+            fill=(120, 120, 120),
+            font=f_footer,
+        )
+
+        # Barra acento inferior
+        draw.rectangle([(0, H - 4), (W, H)], fill=accent)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue()
+
+    except Exception as e:
+        log(f"  Card imagen: error ({e})")
+        return None
+
+
+def _build_keyboard(url_sitio: str, url_avc: str = URL_AVC) -> list:
     """
     Construye teclado inline para alertas del grupo.
-    Fila 1: botón principal RESERVAR AHORA (grande, llamativo)
-    Fila 2: botón canal AVC (referencia informativa)
+    SITIO → fila 1: ENTRAR Y RESERVAR (urgente), fila 2: canal AVC
+    AVC   → fila 1: abrir citaconsular.es, fila 2: ver aviso en AVC
     """
     teclado = []
     if url_sitio:
-        teclado.append([{"text": "🔴  RESERVAR AHORA  🔴", "url": url_sitio}])
-    teclado.append([{"text": "📢 Ver Canal AVC", "url": URL_AVC}])
+        teclado.append([{"text": "⚡  ENTRAR Y RESERVAR CITA  ⚡", "url": url_sitio}])
+    teclado.append([{"text": "📢 Ver aviso oficial en AVC", "url": url_avc}])
     return teclado
 
 
@@ -328,27 +441,31 @@ def enviar_foto_telegram(caption: str, foto_bytes: bytes, url_boton: str = ""):
         enviar_telegram(caption, url_boton)
 
 
-def _enviar_alerta_admin(msg: str, url_boton: str = ""):
+def _enviar_alerta_admin(msg: str, url_boton: str = "", silencioso: bool = False):
     """Envía alerta directa al chat personal del admin (ADMIN_CHAT_ID).
-    Los chats personales siempre producen sonido — garantiza que el admin escuche la alarma
-    aunque las notificaciones del grupo estén en silencio en el celular."""
+
+    silencioso=False (default) → suena en el celular — para citas confirmadas (SITIO)
+    silencioso=True            → llega sin sonido  — para alertas tempranas (AVC)
+    """
     if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
         return
     try:
         payload = {
-            "chat_id":    ADMIN_CHAT_ID,
-            "text":       msg,
-            "parse_mode": "HTML",
+            "chat_id":                ADMIN_CHAT_ID,
+            "text":                   msg,
+            "parse_mode":             "HTML",
+            "disable_notification":   silencioso,
         }
         if url_boton:
             payload["reply_markup"] = {
-                "inline_keyboard": [[{"text": "🔴  RESERVAR AHORA  🔴", "url": url_boton}]]
+                "inline_keyboard": [[{"text": "🔴  ENTRAR Y RESERVAR  🔴", "url": url_boton}]]
             }
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             json=payload, timeout=10,
         )
-        log(f"Telegram admin-directo: {'OK' if r.ok else f'error {r.status_code}'}")
+        modo = "silencioso" if silencioso else "con sonido"
+        log(f"Telegram admin ({modo}): {'OK' if r.ok else f'error {r.status_code}'}")
     except Exception as e:
         log(f"Telegram admin-directo error: {e}")
 
@@ -698,19 +815,31 @@ if __name__ == "__main__":
         hits_sitio = verificar_sitios_multi(tramites)
         for tramite, nombre, url, screenshot in hits_sitio:
             log(f"*** CITA DISPONIBLE en sitio oficial: {nombre} ***")
+
+            # Mensaje grupo — urgente, marketing style
             caption = (
-                f"🚨 <b>CITA DISPONIBLE</b> 🚨\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"📋 <b>Servicio:</b> {nombre}\n"
-                f"🕐 <b>Detectado:</b> {hora}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"⚡ Tienes ~2 min. Abre YA y llena el captcha."
+                f"🚨 <b>¡CITA DISPONIBLE AHORA!</b>\n\n"
+                f"📋 <b>{nombre}</b>\n"
+                f"⏰ {hora}\n\n"
+                f"⚡ <b>Tienes ~2 minutos</b> antes de que desaparezca.\n"
+                f"Entra YA y completa el captcha."
             )
-            if screenshot:
-                enviar_foto_telegram(caption, screenshot, url_boton=url)
+
+            # Foto con screenshot real del sitio; fallback a card PIL si no hay screenshot
+            foto = screenshot or _generar_card_alerta("SITIO", nombre, hora)
+            if foto:
+                enviar_foto_telegram(caption, foto, url_boton=url)
             else:
                 enviar_telegram(caption, url_boton=url)
-            _enviar_alerta_admin(caption, url_boton=url)
+
+            # Admin — mensaje corto, suena fuerte
+            admin_msg = (
+                f"🚨 <b>CITA DISPONIBLE — {nombre}</b>\n"
+                f"⏰ {hora}\n\n"
+                f"Entra YA antes de que desaparezca."
+            )
+            _enviar_alerta_admin(admin_msg, url_boton=url, silencioso=False)
+
         if hits_sitio:
             sys.exit(0)
         log("Sitio oficial: sin disponibilidad")
@@ -724,17 +853,30 @@ if __name__ == "__main__":
         for tramite, nombre, detalle in hits_avc:
             log(f"*** Alerta AVC: {nombre} ***")
             url_servicio = os.getenv(SERVICIOS[tramite]["url_env"], URL_SISTEMA)
+
+            # Mensaje grupo — alerta temprana, acción clara
             avc_msg = (
-                f"⚠️ <b>ALERTA TEMPRANA — Canal AVC</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"📋 <b>Servicio:</b> {nombre}\n"
-                f"🕐 {hora}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"📢 {detalle[:200]}\n\n"
-                f"Pueden abrir citas pronto — mantente atento."
+                f"⚠️ <b>¡CITAS ABRIENDOSE PRONTO!</b>\n\n"
+                f"📋 <b>{nombre}</b>\n"
+                f"⏰ {hora}\n\n"
+                f"📢 {detalle[:180]}\n\n"
+                f"Ten el formulario listo. <b>Actua en cuanto abran.</b>"
             )
-            enviar_telegram(avc_msg, url_boton=url_servicio)
-            _enviar_alerta_admin(avc_msg, url_boton=url_servicio)
+
+            # Card PIL como imagen de alerta (no hay screenshot del sitio en modo AVC)
+            card = _generar_card_alerta("AVC", nombre, hora, detalle)
+            if card:
+                enviar_foto_telegram(avc_msg, card, url_boton=url_servicio)
+            else:
+                enviar_telegram(avc_msg, url_boton=url_servicio)
+
+            # Admin — llega silencioso (no es cita confirmada, no debe despertar a nadie)
+            admin_avc = (
+                f"⚠️ <b>Alerta AVC — {nombre}</b>\n"
+                f"⏰ {hora}\n"
+                f"Citas abriendo pronto — mantente atento."
+            )
+            _enviar_alerta_admin(admin_avc, url_boton=url_servicio, silencioso=True)
     else:
         log("  AVC: sin novedad")
 
