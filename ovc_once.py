@@ -278,14 +278,14 @@ def _generar_card_alerta(tipo: str, nombre: str, hora: str, detalle: str = ""):
             bg_top    = (120, 0, 0)
             bg_bottom = (60, 0, 0)
             accent    = (255, 60, 60)
-            header    = "🚨  CITA DISPONIBLE AHORA"
+            header    = "!! CITA DISPONIBLE AHORA"
             cta_color = (255, 210, 210)
             cta_texto = "Tienes ~2 minutos. Entra YA y completa el captcha."
         else:
             bg_top    = (110, 55, 0)
             bg_bottom = (55, 25, 0)
             accent    = (255, 165, 0)
-            header    = "⚠️  ALERTA TEMPRANA — CANAL AVC"
+            header    = ">>  ALERTA TEMPRANA - CANAL AVC"
             cta_color = (255, 230, 160)
             cta_texto = "Ten el formulario listo. Actua en cuanto abran."
 
@@ -338,7 +338,7 @@ def _generar_card_alerta(tipo: str, nombre: str, hora: str, detalle: str = ""):
         draw.text((40, 100), nombre, fill=(255, 255, 255), font=f_servicio)
 
         # Hora
-        draw.text((40, 165), f"Detectado:  {hora}", fill=(190, 190, 190), font=f_hora)
+        draw.text((40, 165), f"Detectado: {hora}", fill=(190, 190, 190), font=f_hora)
 
         # Separador
         draw.line([(40, 210), (W - 40, 210)], fill=(90, 90, 90), width=1)
@@ -355,7 +355,7 @@ def _generar_card_alerta(tipo: str, nombre: str, hora: str, detalle: str = ""):
         draw.rectangle([(0, H - 48), (W, H)], fill=(15, 15, 15))
         draw.text(
             (40, H - 34),
-            "OVC — Monitor Consular 24/7  |  Verificacion automatica cada 7 min",
+            "OVC  Monitor Consular 24/7  |  Verificacion automatica cada 7 min",
             fill=(120, 120, 120),
             font=f_footer,
         )
