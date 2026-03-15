@@ -25,6 +25,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEGA" o "LMD"
 
+# ─── Proxy residencial ────────────────────────────────────────────────────────
+# GitHub Actions usa IPs de datacenter → Imperva las bloquea directamente.
+# Un proxy residencial europeo hace que el tráfico salga desde una IP de hogar real.
+# Formato: http://usuario:contraseña@host:puerto
+# Webshare.io rotating: http://user-country-es:pass@p.webshare.io:80
+# Si está vacío → el bot corre sin proxy (útil para AVC, que no bloquea DCs)
+HTTP_PROXY_URL = os.getenv("HTTP_PROXY_URL", "")
+
 # ─── Perfil persistente de Chromium ──────────────────────────────────────────
 # El user-data-dir se cachea en GitHub Actions entre runs.
 # Resultado: el sitio ve una sesión que "ya existía", no un browser virgen.
@@ -326,6 +334,14 @@ def verificar_url_widget(url: str) -> tuple:
 
         USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+        # Proxy residencial — si está configurado, todo el tráfico del browser
+        # sale por IP de hogar europeo en vez de datacenter de Azure/GitHub
+        proxy_cfg = {"server": HTTP_PROXY_URL} if HTTP_PROXY_URL else None
+        if proxy_cfg:
+            log(f"  Proxy: {HTTP_PROXY_URL[:40]}...")
+        else:
+            log("  Proxy: no configurado (IP directa del runner)")
+
         with sync_playwright() as p:
             # launch_persistent_context: reutiliza cookies/storage del run anterior
             # (el user-data-dir se cachea en GitHub Actions entre runs via actions/cache)
@@ -333,6 +349,7 @@ def verificar_url_widget(url: str) -> tuple:
             ctx = p.chromium.launch_persistent_context(
                 str(USER_DATA_DIR),
                 headless=True,
+                proxy=proxy_cfg,
                 args=[
                     "--no-sandbox",
                     "--disable-dev-shm-usage",

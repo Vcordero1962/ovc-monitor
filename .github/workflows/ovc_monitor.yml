@@ -82,6 +82,10 @@ jobs:
           TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
           AVC_TRAMITE:           ${{ secrets.AVC_TRAMITE }}
           CHROMIUM_PROFILE_DIR:  /home/runner/.config/chromium-ovc
+          # Proxy residencial — IP de hogar europeo para bypassar bloqueo Imperva
+          # Formato Webshare rotating: http://user-country-es:pass@p.webshare.io:80
+          # Si el secret está vacío, el bot corre sin proxy (AVC funciona igual)
+          HTTP_PROXY_URL:        ${{ secrets.HTTP_PROXY_URL }}
         run: python ovc_once.py
 
       - name: Desconectar VPN
