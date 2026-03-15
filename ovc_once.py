@@ -336,9 +336,20 @@ def verificar_url_widget(url: str) -> tuple:
 
         # Proxy residencial — si está configurado, todo el tráfico del browser
         # sale por IP de hogar europeo en vez de datacenter de Azure/GitHub
-        proxy_cfg = {"server": HTTP_PROXY_URL} if HTTP_PROXY_URL else None
-        if proxy_cfg:
-            log(f"  Proxy: {HTTP_PROXY_URL[:40]}...")
+        # Playwright requiere username/password SEPARADOS del server (no en la URL)
+        proxy_cfg = None
+        if HTTP_PROXY_URL:
+            try:
+                from urllib.parse import urlparse
+                _p = urlparse(HTTP_PROXY_URL)
+                proxy_cfg = {
+                    "server":   f"{_p.scheme}://{_p.hostname}:{_p.port}",
+                    "username": _p.username or "",
+                    "password": _p.password or "",
+                }
+                log(f"  Proxy: {_p.scheme}://{_p.hostname}:{_p.port} user={(_p.username or '')[:12]}...")
+            except Exception as _pe:
+                log(f"  Proxy: error parseando URL — {_pe}")
         else:
             log("  Proxy: no configurado (IP directa del runner)")
 
