@@ -75,6 +75,28 @@ jobs:
             echo "OK: tunel activo, salida por IP europea"
           fi
 
+      - name: Test proxy (diagnostico)
+        if: ${{ secrets.HTTP_PROXY_URL != '' }}
+        env:
+          HTTP_PROXY_URL: ${{ secrets.HTTP_PROXY_URL }}
+        run: |
+          if [ -z "$HTTP_PROXY_URL" ]; then
+            echo "HTTP_PROXY_URL vacío — sin proxy"
+            exit 0
+          fi
+          echo "=== Test proxy residencial ==="
+          # Ver IP directa del runner
+          IP_DIRECTA=$(curl -s --max-time 8 https://api.ipify.org || echo "?")
+          echo "IP directa GitHub Actions: $IP_DIRECTA"
+          # Ver IP a través del proxy
+          IP_PROXY=$(curl -s --max-time 20 -x "$HTTP_PROXY_URL" https://api.ipify.org || echo "FALLO")
+          echo "IP via proxy: $IP_PROXY"
+          if [ "$IP_PROXY" = "FALLO" ] || [ "$IP_PROXY" = "?" ]; then
+            echo "WARN: proxy no responde — el bot correrá sin proxy efectivo"
+          else
+            echo "OK: proxy funcional, salida por $IP_PROXY"
+          fi
+
       - name: Verificar disponibilidad
         env:
           URL_SISTEMA:           ${{ secrets.URL_SISTEMA }}
