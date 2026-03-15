@@ -46,8 +46,10 @@ OVC/
 ## Telegram
 
 - **Bot**: @ovc_consular_bot
-- **Chat ID**: 1951356386
-- **Alerta cita**: mensaje con botón inline "ABRIR AHORA" → abre captcha directo
+- **Grupo alertas**: "OVC Alertas Consulado" — chat_id: `-5127911137`
+- **Chat personal Vladimir** (backup): `1951356386`
+- **Secret TELEGRAM_CHAT_ID**: apunta al grupo (todos los miembros reciben alerta simultanea)
+- **Alerta cita**: mensaje con boton inline "ABRIR AHORA" -> abre citaconsular.es directo
 - **Heartbeat**: cada 4h (0,4,8,12,16,20 Miami) — mensaje "Estoy vivo"
 
 ---
@@ -119,5 +121,7 @@ C:\Users\aemes\anaconda3\python.exe -B ovc_monitor.py
 
 | Fecha | Cambios |
 |---|---|
+| Mar 15 2026 | Grupo Telegram "OVC Alertas Consulado" (-5127911137) — alertas a multiples miembros |
+| Mar 14 2026 | Fix WiFi + Fix DNS GitHub Actions (168.63.129.16) + auto-fallback wg0 sin handshake |
 | Mar 13 2026 | Setup inicial GitHub Actions, anti-bot, heartbeat, repo privado |
-| Mar 12 2026 | Bot local — primera alerta real (8 mensajes CITA DISPONIBLE) |
+| Mar 12 2026 | Bot local — primera alerta real (8 mensajes CITA DISPONIBLE falsos positivos) |
