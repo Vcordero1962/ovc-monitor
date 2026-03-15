@@ -26,6 +26,8 @@ OVC/
 ├── requirements.txt     ← playwright, requests, python-dotenv
 ├── .env                 ← Credenciales locales (NO en git)
 ├── .gitignore           ← Excluye .env y __pycache__
+├── ovc_trace_flood.py   ← Diagnóstico: monkey-patch HTTP para detectar duplicados
+├── ovc_diagnose_flood.py ← Diagnóstico: escaneo completo de endpoints Telegram
 └── .github/
     └── workflows/
         ├── ovc_monitor.yml    ← Cron irregular + ovc_once.py
@@ -39,7 +41,7 @@ OVC/
 - **Repo**: https://github.com/Vcordero1962/ovc-monitor
 - **Visibilidad**: Privado
 - **Token (PAT)**: guardado en .env local (variable GITHUB_TOKEN o GITHUB_PAT)
-- **Secretos configurados**: URL_SISTEMA, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, AVC_TRAMITE, HTTP_PROXY_URL, SITIO_DIRECTO_ENABLED, WG_CONFIG_NL
+- **Secretos configurados**: URL_SISTEMA, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ADMIN_CHAT_ID, AVC_TRAMITE, HTTP_PROXY_URL, SITIO_DIRECTO_ENABLED, WG_CONFIG_NL
 
 ---
 
@@ -50,7 +52,11 @@ OVC/
 - **Chat personal Vladimir** (backup): `1951356386`
 - **Secret TELEGRAM_CHAT_ID**: apunta al grupo (todos los miembros reciben alerta simultanea)
 - **Alerta cita**: mensaje con boton inline "ABRIR AHORA" -> abre citaconsular.es directo
-- **Heartbeat**: cada 4h (0,4,8,12,16,20 Miami) — mensaje "Estoy vivo"
+- **ADMIN_CHAT_ID**: `1951356386` (chat personal Vladimir — status técnico del bot)
+- **Secreto ADMIN_CHAT_ID**: apunta al chat privado admin — solo heartbeat y alertas técnicas
+- **Heartbeat**: 2x/día (09:15 y 17:15 Miami) — edita mensaje PINNEADO en chat admin (nunca crea nuevos)
+  - Anti-duplicado: `MIN_INTERVALO_HORAS=2` — si corrió hace <2h → abortar
+  - Contador: `#RUN_NUMBER` (GITHUB_RUN_NUMBER) — visible en mensaje para diagnóstico
 
 ---
 
@@ -134,6 +140,7 @@ C:\Users\aemes\anaconda3\python.exe -B ovc_monitor.py
 
 | Fecha | Cambios |
 |---|---|
+| Mar 15 2026 (noche) | Heartbeat anti-ráfaga: edita mensaje pinneado + ADMIN_CHAT_ID + anti-duplicado 2h + #RUN_NUMBER |
 | Mar 15 2026 (tarde) | Proxy Webshare + SITIO_DIRECTO_ENABLED flag — AVC-only mode (59s/run) |
 | Mar 15 2026 (mañana) | Grupo Telegram "OVC Alertas Consulado" (-5127911137) — alertas a multiples miembros |
 | Mar 14 2026 | Fix WiFi + Fix DNS GitHub Actions (168.63.129.16) + auto-fallback wg0 sin handshake |
