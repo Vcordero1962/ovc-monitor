@@ -147,12 +147,12 @@ def editar_mensaje(msg_id: int, texto: str) -> bool:
     return False
 
 
-def enviar_nuevo(texto: str) -> int | None:
+def enviar_nuevo(texto: str, silencioso: bool = False) -> int | None:
     """Envía un mensaje nuevo. Retorna el message_id."""
     r = requests.post(f"{BASE_TG}/sendMessage", json={
-        "chat_id":            ADMIN_CHAT_ID,
-        "text":               texto,
-        "disable_notification": True,
+        "chat_id":              ADMIN_CHAT_ID,
+        "text":                 texto,
+        "disable_notification": silencioso,
     }, timeout=10)
     if r.ok:
         mid = r.json().get("result", {}).get("message_id")
@@ -160,6 +160,20 @@ def enviar_nuevo(texto: str) -> int | None:
         return mid
     print(f"[HEARTBEAT] sendMessage ERROR: {r.text[:100]}", flush=True)
     return None
+
+
+def enviar_notificacion_push(texto: str):
+    """Envía mensaje corto CON sonido/vibración — el usuario lo recibe como alerta activa."""
+    r = requests.post(f"{BASE_TG}/sendMessage", json={
+        "chat_id":              ADMIN_CHAT_ID,
+        "text":                 texto,
+        "disable_notification": False,   # SONIDO activado
+    }, timeout=10)
+    if r.ok:
+        mid = r.json().get("result", {}).get("message_id")
+        print(f"[HEARTBEAT] Push enviado con sonido — id={mid}", flush=True)
+    else:
+        print(f"[HEARTBEAT] Push ERROR: {r.text[:100]}", flush=True)
 
 
 def pinnear(msg_id: int):
@@ -206,15 +220,51 @@ msg = (
     "🔴 Sin novedades. Alerta cuando haya cita."
 )
 
-# Intentar editar el mensaje pinneado existente
+# ── 1. Actualizar mensaje pinneado (silencioso — siempre visible en el chat) ──
 pinned_id = get_pinned_msg_id()
 if pinned_id and editar_mensaje(pinned_id, msg):
-    print("[HEARTBEAT] LISTO — mensaje pinneado actualizado, sin mensajes nuevos.", flush=True)
+    print("[HEARTBEAT] Pinneado actualizado (silencioso).", flush=True)
 else:
-    # Primera vez o pin perdido — enviar nuevo y pinnearlo
-    nuevo_id = enviar_nuevo(msg)
+    # Primera vez o pin perdido — enviar nuevo y pinnearlo (silencioso)
+    nuevo_id = enviar_nuevo(msg, silencioso=True)
     if nuevo_id:
         pinnear(nuevo_id)
-        print("[HEARTBEAT] LISTO — nuevo mensaje enviado y pinneado.", flush=True)
+        print("[HEARTBEAT] Nuevo pinneado enviado.", flush=True)
 
+# ── 2. Notificación push CON sonido ───────────────────────────────────────────
+# Decide si es el run de resumen diario (21 UTC = 5pm Miami) o ping corto
+hora_utc = datetime.now(timezone.utc).hour
+es_resumen_diario = (hora_utc == 21)
+
+if es_resumen_diario and stats:
+    # Resumen completo del día — se envía 1 vez/día a las 5pm Miami con sonido
+    emoji_dia = "✅" if stats.get("fallidos", 0) == 0 else "⚠️"
+    push_txt = (
+        f"📊 OVC — Resumen del día #{RUN_NUMBER}\n"
+        f"📅 {miami.strftime('%d/%m/%Y')}\n"
+        f"─────────────────────────\n"
+        f"{emoji_dia} Checks realizados: {stats.get('total_hoy','?')}\n"
+        f"✅ Exitosos: {stats.get('exitosos','?')}\n"
+        f"❌ Fallidos: {stats.get('fallidos', 0)}\n"
+        f"⏱ Último check: {stats.get('ultimo_hace','?')}\n"
+        f"─────────────────────────\n"
+        f"🔴 Sin citas disponibles hoy.\n"
+        f"Bot activo — vigilando 24/7."
+    )
+    print("[HEARTBEAT] Enviando resumen diario con sonido...", flush=True)
+else:
+    # Ping corto 3x/día — solo confirma que el bot vive
+    emoji_estado = "✅" if stats.get("fallidos", 0) == 0 else "⚠️"
+    checks = stats.get("total_hoy", "?")
+    fallidos = stats.get("fallidos", 0)
+    push_txt = (
+        f"{emoji_estado} OVC vivo #{RUN_NUMBER} · {miami.strftime('%H:%M')} Miami\n"
+        f"Checks hoy: {checks}"
+        + (f" · ⚠️ {fallidos} fallidos" if fallidos else "")
+        + "\n🔴 Sin citas aún."
+    )
+    print("[HEARTBEAT] Enviando ping corto con sonido...", flush=True)
+
+enviar_notificacion_push(push_txt)
+print("[HEARTBEAT] LISTO.", flush=True)
 sys.exit(0)
