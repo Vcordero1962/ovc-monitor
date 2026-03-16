@@ -792,6 +792,145 @@ def verificar_avc_todos(tramites: list) -> list:
         return []
 
 
+def _parse_bkt_widget(text: str) -> dict:
+    """
+    Extrae agendas[] y dates[] del objeto JS bkt_init_widget.
+    Soporta claves sin comillas (JS estándar) y con comillas simples/dobles.
+    """
+    import re as _re
+    m  = _re.search(r"(?:['\"]agendas['\"]|agendas)\s*:\s*(\[[^\]]*\])", text, _re.DOTALL)
+    m2 = _re.search(r"(?:['\"]dates['\"]|dates)\s*:\s*(\[[^\]]*\])",   text, _re.DOTALL)
+    agendas_raw = m.group(1)  if m  else "[]"
+    dates_raw   = m2.group(1) if m2 else "[]"
+    return {
+        "agendas_count": len(_re.findall(r'\{', agendas_raw)),
+        "dates_count":   len(_re.findall(r'\d{4}-\d{2}-\d{2}', dates_raw)),
+        "dates_raw":     dates_raw[:200],
+    }
+
+
+def verificar_bookitit_post_url(widget_url: str) -> tuple:
+    """
+    Verifica disponibilidad en un widget de citaconsular.es usando el flujo POST token.
+    No necesita Playwright ni proxy — usa requests simple.
+
+    Flujo Imperva bypass:
+      1. GET widget_url → página captcha gate con <input name="token">
+      2. POST widget_url con token → responde con bkt_init_widget JS object
+      3. Parsea agendas[] y dates[] → si dates[] tiene entradas, hay citas disponibles
+
+    Retorna (disponible: bool, info: dict)
+      disponible=True  → dates[] no está vacío  — CITA DISPONIBLE
+      disponible=False → todo vacío / error      — sin novedad
+    """
+    ua = random.choice(USER_AGENTS)
+    session = requests.Session()
+    headers = {
+        "User-Agent":                ua,
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language":           "es-ES,es;q=0.9",
+        "Accept-Encoding":           "gzip, deflate, br",
+        "Connection":                "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest":            "document",
+        "Sec-Fetch-Mode":            "navigate",
+        "Sec-Fetch-Site":            "none",
+        "Cache-Control":             "max-age=0",
+    }
+    try:
+        # Paso 1 — GET: obtener la página del captcha gate + el token oculto
+        r_get = session.get(widget_url, headers=headers, timeout=20, allow_redirects=True)
+        if not r_get.ok:
+            log(f"    BKT GET: HTTP {r_get.status_code}")
+            return False, {}
+
+        html_get = r_get.text
+        log(f"    BKT GET: {r_get.status_code} — {len(html_get)} chars")
+
+        # Extraer token (Imperva lo requiere en el POST)
+        token = None
+        m = re.search(r'name=["\']token["\'][^>]*value=["\']([^"\']+)["\']', html_get)
+        if not m:
+            m = re.search(r'value=["\']([^"\']+)["\'][^>]*name=["\']token["\']', html_get)
+        if m:
+            token = m.group(1)
+            log(f"    BKT token: {token[:20]}...")
+        else:
+            log("    BKT token: NO encontrado en GET response")
+            return False, {}
+
+        # Paso 2 — POST: enviar token → Imperva nos deja pasar, devuelve el widget real
+        human_sleep(0.8, 2.0)
+        post_headers = dict(headers)
+        post_headers.update({
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer":      widget_url,
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+        })
+        r_post = session.post(
+            widget_url,
+            data={"token": token},
+            headers=post_headers,
+            timeout=20,
+            allow_redirects=True,
+        )
+        if not r_post.ok:
+            log(f"    BKT POST: HTTP {r_post.status_code}")
+            return False, {}
+
+        post_text = r_post.text
+        log(f"    BKT POST: {r_post.status_code} — {len(post_text)} chars")
+
+        # Paso 3 — Parsear bkt_init_widget
+        bkt_pos = post_text.find("bkt_init_widget")
+        if bkt_pos < 0:
+            log("    BKT: bkt_init_widget NO en POST response (bloqueado por Imperva?)")
+            return False, {}
+
+        bkt_ctx = post_text[bkt_pos:bkt_pos + 1500]
+        data    = _parse_bkt_widget(bkt_ctx)
+        log(f"    BKT: agendas={data['agendas_count']} dates={data['dates_count']} raw={data['dates_raw'][:80]}")
+
+        if data["dates_count"] > 0:
+            log("    BKT: *** FECHAS DISPONIBLES en dates[] ***")
+            return True, data
+        elif data["agendas_count"] > 0:
+            log("    BKT: agendas presentes pero dates[] vacío — sin citas hoy")
+        else:
+            log("    BKT: agendas[] y dates[] vacíos — sin disponibilidad")
+        return False, data
+
+    except Exception as e:
+        log(f"    BKT error: {e}")
+        return False, {}
+
+
+def verificar_bookitit_todos(tramites: list) -> list:
+    """
+    Verifica Bookitit vía POST token para todos los tramites con URL configurada.
+    Retorna lista de (tramite, nombre, url, info_dict) con disponibilidad confirmada.
+    No necesita Playwright ni proxy residencial.
+    """
+    hits = []
+    for tramite in tramites:
+        servicio = SERVICIOS[tramite]
+        url = os.getenv(servicio["url_env"], "")
+        if not url and tramite == "LEGA" and URL_SISTEMA:
+            url = URL_SISTEMA
+        if not url:
+            log(f"  BKT [{tramite}]: sin URL configurada — omitiendo")
+            continue
+        log(f"  BKT verificando [{tramite}] {servicio['nombre']}...")
+        disponible, info = verificar_bookitit_post_url(url)
+        if disponible:
+            hits.append((tramite, servicio["nombre"], url, info))
+        if tramites.index(tramite) < len(tramites) - 1:
+            human_sleep(1.5, 3.5)
+    return hits
+
+
 if __name__ == "__main__":
     # Sleep gaussiano al inicio — rompe el patrón regular del cron
     # Distribución normal: mayoría entre 30-60s, outliers ocasionales
@@ -846,7 +985,41 @@ if __name__ == "__main__":
     else:
         log("Sitio oficial: omitido (SITIO_DIRECTO_ENABLED=0 — requiere proxy residencial)")
 
-    # 2. Canal AVC (una sola petición, verifica todos los tramites)
+    # 2. Bookitit POST directo — bypasea Imperva sin proxy ni Playwright
+    #    Flujo: GET captcha gate → extraer token → POST → parsear bkt_init_widget
+    #    Funciona desde GitHub Actions IPs (no requiere proxy residencial)
+    #    Desactivar con: gh secret set BOOKITIT_POST_ENABLED --body "0"
+    BOOKITIT_POST_ENABLED = os.getenv("BOOKITIT_POST_ENABLED", "1") == "1"
+    if BOOKITIT_POST_ENABLED:
+        log(f"Verificando Bookitit POST directo ({len(tramites)} servicios)...")
+        hits_bkt = verificar_bookitit_todos(tramites)
+        if hits_bkt:
+            for tramite, nombre, url, info in hits_bkt:
+                log(f"*** CITA DISPONIBLE via Bookitit POST: {nombre} ***")
+                caption = (
+                    f"🚨 <b>¡CITA DISPONIBLE AHORA!</b>\n\n"
+                    f"📋 <b>{nombre}</b>\n"
+                    f"⏰ {hora}\n\n"
+                    f"⚡ <b>Tienes ~2 minutos</b> antes de que desaparezca.\n"
+                    f"Entra YA y completa el captcha."
+                )
+                foto = _generar_card_alerta("SITIO", nombre, hora)
+                if foto:
+                    enviar_foto_telegram(caption, foto, url_boton=url)
+                else:
+                    enviar_telegram(caption, url_boton=url)
+                admin_msg = (
+                    f"🚨 <b>CITA DISPONIBLE — {nombre}</b>\n"
+                    f"⏰ {hora}\n\nEntra YA antes de que desaparezca."
+                )
+                _enviar_alerta_admin(admin_msg, url_boton=url, silencioso=False)
+            sys.exit(0)
+        else:
+            log("Bookitit POST: sin disponibilidad")
+    else:
+        log("Bookitit POST: desactivado (BOOKITIT_POST_ENABLED=0)")
+
+    # 3. Canal AVC (una sola petición, verifica todos los tramites)
     log(f"Verificando canal AVC ({len(tramites)} servicios)...")
     hits_avc = verificar_avc_todos(tramites)
     if hits_avc:

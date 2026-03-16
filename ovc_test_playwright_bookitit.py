@@ -17,18 +17,20 @@ def log(msg): print(msg, flush=True)
 
 
 def parse_bkt_widget(text):
-    """Extrae datos clave de bkt_init_widget usando regex (evita problemas de JSON con comillas simples)."""
+    """Extrae datos clave de bkt_init_widget usando regex (evita problemas de JSON con comillas simples).
+    Maneja claves JS sin comillas: agendas: [] y "agendas": [] son ambas válidas."""
     results = {}
 
-    # Extraer agendas array
-    m = re.search(r"['\"]agendas['\"]\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
+    # Extraer agendas array — clave puede ser sin comillas (JS estándar) o con comillas
+    m = re.search(r"(?:['\"]agendas['\"]|agendas)\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
     results["agendas_raw"] = m.group(1) if m else "NO ENCONTRADO"
     results["agendas_count"] = len(re.findall(r'\{', m.group(1))) if m else 0
 
-    # Extraer dates array
-    m2 = re.search(r"['\"]dates['\"]\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
+    # Extraer dates array — igual, clave sin/con comillas
+    m2 = re.search(r"(?:['\"]dates['\"]|dates)\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
     results["dates_raw"] = m2.group(1)[:200] if m2 else "NO ENCONTRADO"
-    results["dates_count"] = len(re.findall(r"'\d{4}-\d{2}-\d{2}'", m2.group(1))) if m2 else 0
+    # Acepta fechas con o sin comillas: '2024-03-16' o "2024-03-16" o 2024-03-16
+    results["dates_count"] = len(re.findall(r"\d{4}-\d{2}-\d{2}", m2.group(1))) if m2 else 0
 
     # Extraer id del centro
     m3 = re.search(r"['\"]id_centro['\"]\s*:\s*['\"]?(\w+)['\"]?", text)
