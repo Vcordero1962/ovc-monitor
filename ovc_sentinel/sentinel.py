@@ -36,7 +36,7 @@ GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO        = os.getenv("GITHUB_REPO", "Vcordero1962/ovc-monitor")
 
 # Umbrales de alerta
-MAX_MIN_DESDE_ULTIMO_RUN_BOT  = 60   # minutos — GitHub Actions free puede tener gaps de ~45 min
+MAX_MIN_DESDE_ULTIMO_RUN_BOT  = 90   # minutos — GitHub Actions free throttlea cron a ~1x/hora real
 MAX_HORAS_DESDE_HEARTBEAT     = 5    # horas   — si heartbeat no llegó en 5h → alerta
 CHECK_INTERVAL_MIN             = 30   # minutos entre cada ciclo del sentinel
 

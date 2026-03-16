@@ -2,7 +2,7 @@ name: OVC Monitor Consular
 
 on:
   schedule:
-    - cron: '0,7,13,19,26,32,38,44,51,57 * * * *'
+    - cron: '*/30 * * * *'  # cada 30 min — GitHub Actions honra mejor intervals espaciados (antes 10x/hora → throttleado a 1x/hora real)
   workflow_dispatch:
 
 jobs:
