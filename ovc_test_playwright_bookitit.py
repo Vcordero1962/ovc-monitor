@@ -1,220 +1,231 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OVC Test — Playwright en app.bookitit.com directo (sin pasar por citaconsular.es/Imperva)
-
-Hipotesis: el WAF Imperva esta en citaconsular.es, no en app.bookitit.com.
-Si Playwright carga el widget desde app.bookitit.com, las llamadas JSONP de disponibilidad
-van a app.bookitit.com/onlinebookings/main/ — que puede no tener el mismo bloqueo.
-
-Comparacion:
-  URL A: https://app.bookitit.com/es/hosteds/widgetdefault/{PK}/{SID}   <- SIN Imperva?
-  URL B: https://www.citaconsular.es/es/hosteds/widgetdefault/{PK}/{SID} <- CON Imperva
-
-Ejecutar via: gh workflow run ovc_test_playwright_bookitit.yml
+OVC Test v2 — Playwright profundo: captura todas las requests de red,
+navega iframes, espera más, e intenta fetch manual del JSONP desde el contexto de la página.
 """
 
 import os
 import sys
-import json
 import time
+import re
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 PK  = os.environ.get("PK",  "28db94e270580be60f6e00285a7d8141f")
 SID = os.environ.get("SID", "bkt873048")
-CHROMIUM_PROFILE = os.environ.get("CHROMIUM_PROFILE_DIR", "/tmp/chromium-ovc-test")
 
-WIDGET_BOOKITIT    = f"https://app.bookitit.com/es/hosteds/widgetdefault/{PK}/{SID}"
+WIDGET_BOOKITIT     = f"https://app.bookitit.com/es/hosteds/widgetdefault/{PK}/{SID}"
 WIDGET_CITACONSULAR = f"https://www.citaconsular.es/es/hosteds/widgetdefault/{PK}/{SID}"
+JSONP_PATH = f"/onlinebookings/main/?callback=jQuery321&type=default&publickey={PK}&lang=es&services[]={SID}&version=5"
 
 TEXTO_SIN_CITAS = "No hay horas disponibles"
-TEXTO_CON_CITAS_PATTERNS = ["Huecos libres", "clsDivDatetimeSlot", "selecttime", "bkt_slot"]
 
-def log(msg):
-    print(msg, flush=True)
+def log(msg): print(msg, flush=True)
 
 
-def probar_url(page, url, nombre, timeout_ms=25000):
-    """
-    Carga la URL con Playwright y analiza si:
-    - Imperva la bloqueo (challenge page / captcha)
-    - El widget cargo correctamente
-    - Hay o no citas disponibles
-    """
-    log(f"\n{'='*60}")
-    log(f"  PROBANDO: {nombre}")
+def probar_url(context, url, nombre):
+    log(f"\n{'='*65}")
+    log(f"  TEST: {nombre}")
     log(f"  URL: {url}")
-    log(f"{'='*60}")
+    log(f"{'='*65}")
 
-    requests_capturadas = []
+    all_requests = []
+    all_responses = {}
+
+    page = context.new_page()
 
     def on_request(req):
-        if "onlinebookings" in req.url or "bookitit" in req.url:
-            requests_capturadas.append({"url": req.url[:120], "method": req.method})
+        all_requests.append(req.url)
 
     def on_response(resp):
-        if "onlinebookings" in resp.url:
-            try:
-                body = resp.body()
-                log(f"  [NETWORK] onlinebookings response: status={resp.status} chars={len(body)}")
-                preview = body[:300].decode("utf-8", errors="replace").replace("\n", " ")
-                log(f"  [NETWORK] Preview: {preview}")
-            except Exception:
-                pass
+        try:
+            body_bytes = resp.body()
+            all_responses[resp.url] = {
+                "status": resp.status,
+                "chars": len(body_bytes),
+                "preview": body_bytes[:300].decode("utf-8", errors="replace").replace("\n"," ")
+            }
+        except Exception:
+            pass
 
     page.on("request", on_request)
     page.on("response", on_response)
 
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        time.sleep(3)  # dejar que JS cargue el widget
+        page.goto(url, wait_until="domcontentloaded", timeout=20000)
 
-        # Esperar elemento del widget o timeout
-        try:
-            page.wait_for_selector('[id*="bookitit"], [class*="bookitit"], [id*="bkt"], iframe',
-                                   timeout=10000)
-            log("  [DOM] Elemento Bookitit encontrado en el DOM")
-        except PWTimeout:
-            log("  [DOM] Timeout esperando elemento Bookitit — widget puede no haber cargado")
+        # Esperar 20 segundos para que el widget cargue completamente
+        log("  Esperando 20s para carga completa del widget...")
+        time.sleep(20)
 
         html = page.content()
-        title = page.title()
-        log(f"  [PAGE] Title: {title!r}")
-        log(f"  [PAGE] HTML total chars: {len(html)}")
+        log(f"  [PAGE] Title: {page.title()!r}")
+        log(f"  [PAGE] HTML: {len(html)} chars")
 
-        # Detectar bloqueo Imperva
-        imperva_signals = ["_Incapsula_Resource", "incapsula", "imperva", "challenge",
-                           "Ray ID", "Cloudflare", "Please enable cookies"]
-        bloqueado = any(s.lower() in html.lower() for s in imperva_signals)
-        log(f"  [IMPERVA] Bloqueo detectado: {'SI ❌' if bloqueado else 'NO ✅'}")
+        # Todas las requests de red capturadas
+        log(f"  [NETWORK] Total requests capturadas: {len(all_requests)}")
+        bookitit_reqs = [u for u in all_requests if "bookitit" in u or "onlinebookings" in u]
+        log(f"  [NETWORK] Requests Bookitit/onlinebookings: {len(bookitit_reqs)}")
+        for u in bookitit_reqs[:8]:
+            resp_data = all_responses.get(u, {})
+            log(f"    → {u[:100]}")
+            if resp_data:
+                log(f"       status={resp_data['status']} chars={resp_data['chars']} preview: {resp_data['preview'][:100]}")
 
-        # Detectar disponibilidad
+        # Detectar señales
+        imperva = any(s.lower() in html.lower() for s in ["_Incapsula_Resource","incapsula","imperva"])
         sin_citas = TEXTO_SIN_CITAS in html
-        con_citas = any(p in html for p in TEXTO_CON_CITAS_PATTERNS)
+        con_citas = any(p in html for p in ["Huecos libres","clsDivDatetimeSlot","bkt_slot","selecttime"])
+        log(f"  [IMPERVA] {('BLOQUEADO ❌' if imperva else 'LIBRE ✅')}")
+        log(f"  [CITAS] {'Sin citas (widget OK)' if sin_citas else ('CON CITAS ✅' if con_citas else 'Sin datos de citas aún')}")
 
-        if sin_citas:
-            log("  [DISPONIBILIDAD] 'No hay horas disponibles' — widget cargó, sin citas hoy")
-        elif con_citas:
-            log("  [DISPONIBILIDAD] *** CITAS DISPONIBLES DETECTADAS *** ✅")
-        else:
-            log("  [DISPONIBILIDAD] Widget no mostró datos de disponibilidad (puede ser JS tardío)")
+        # Iframes en la página
+        frames = page.frames
+        log(f"  [FRAMES] Total frames: {len(frames)}")
+        for i, frame in enumerate(frames):
+            try:
+                frame_html = frame.content()
+                frame_url = frame.url
+                has_citas = TEXTO_SIN_CITAS in frame_html or "bkt_slot" in frame_html or "Huecos" in frame_html
+                log(f"    Frame {i}: url={frame_url[:80]} chars={len(frame_html)} citas={has_citas}")
+                if has_citas or len(frame_html) > 2000:
+                    snippet = re.search(r'(No hay horas|Huecos|bkt_init|selecttime|agendas).{0,150}', frame_html, re.IGNORECASE)
+                    if snippet:
+                        log(f"      SNIPPET: {snippet.group()[:150]}")
+            except Exception as e:
+                log(f"    Frame {i}: ERROR {e}")
 
-        # Mostrar requests de red capturadas
-        if requests_capturadas:
-            log(f"  [NETWORK] Requests Bookitit capturadas ({len(requests_capturadas)}):")
-            for r in requests_capturadas[:5]:
-                log(f"    {r['method']} {r['url']}")
-        else:
-            log("  [NETWORK] Sin requests a onlinebookings capturadas")
+        # Intentar fetch manual del JSONP desde contexto de la página (tiene cookies)
+        log("  [FETCH MANUAL] Intentando fetch() interno del JSONP...")
+        try:
+            base = "https://app.bookitit.com" if "app.bookitit.com" in url else "https://www.citaconsular.es"
+            jsonp_url = base + JSONP_PATH
+            result = page.evaluate(f"""
+                async () => {{
+                    try {{
+                        const r = await fetch("{jsonp_url}", {{
+                            method: "GET",
+                            credentials: "include",
+                            headers: {{
+                                "Accept": "*/*",
+                                "Referer": "{url}",
+                                "Sec-Fetch-Dest": "script",
+                                "Sec-Fetch-Mode": "no-cors",
+                                "Sec-Fetch-Site": "same-origin"
+                            }}
+                        }});
+                        const text = await r.text();
+                        return {{ status: r.status, chars: text.length, preview: text.substring(0, 300) }};
+                    }} catch(e) {{
+                        return {{ error: e.toString() }};
+                    }}
+                }}
+            """)
+            log(f"  [FETCH MANUAL] Resultado: {result}")
+            if result and result.get("chars", 0) > 100:
+                prev = result.get("preview","")
+                sin = TEXTO_SIN_CITAS in prev
+                con = "Huecos" in prev or "bkt_slot" in prev or "agendas" in prev
+                log(f"  [FETCH MANUAL] Datos útiles: {'SIN CITAS' if sin else ('CON CITAS ✅' if con else 'RESPONDE pero sin datos conocidos')}")
+        except Exception as e:
+            log(f"  [FETCH MANUAL] ERROR: {e}")
 
-        # Screenshot para inspección visual
-        screenshot_path = f"/tmp/test_{nombre.replace(' ','_').replace('/','_')[:30]}.png"
-        page.screenshot(path=screenshot_path, full_page=False)
-        log(f"  [SCREENSHOT] Guardado: {screenshot_path}")
+        # POST con token (técnica alternativa)
+        log("  [POST TOKEN] Intentando POST con token Bookitit...")
+        try:
+            token_result = page.evaluate(f"""
+                async () => {{
+                    try {{
+                        // Paso 1: obtener token de la pagina del widget
+                        const r1 = await fetch("{url}", {{ credentials: "include" }});
+                        const html = await r1.text();
+                        const match = html.match(/name="token"[^>]*value="([^"]+)"/);
+                        if (!match) return {{ error: "token no encontrado en HTML" }};
+                        const token = match[1];
 
-        # Snippet HTML relevante
-        import re
-        snippet = re.search(r'(bookitit|bkt_init|No hay horas|Huecos).{0,200}', html, re.IGNORECASE)
-        if snippet:
-            log(f"  [HTML SNIPPET] ...{snippet.group()[:200]}...")
+                        // Paso 2: POST con el token
+                        const body = new URLSearchParams();
+                        body.append("token", token);
+                        const r2 = await fetch("{url}", {{
+                            method: "POST",
+                            credentials: "include",
+                            headers: {{ "Content-Type": "application/x-www-form-urlencoded" }},
+                            body: body.toString()
+                        }});
+                        const text2 = await r2.text();
+                        return {{ status: r2.status, chars: text2.length, preview: text2.substring(0, 400), token: token }};
+                    }} catch(e) {{
+                        return {{ error: e.toString() }};
+                    }}
+                }}
+            """)
+            log(f"  [POST TOKEN] Resultado: status={token_result.get('status')} chars={token_result.get('chars')} token={token_result.get('token','N/A')[:20]}")
+            if token_result.get("chars", 0) > 100:
+                prev = token_result.get("preview","")
+                sin = TEXTO_SIN_CITAS in prev
+                con = "agendas" in prev or "bkt_init" in prev or "Huecos" in prev
+                log(f"  [POST TOKEN] Datos: {'SIN CITAS' if sin else ('CON CITAS / AGENDAS ✅' if con else 'Responde: ' + prev[:100])}")
+        except Exception as e:
+            log(f"  [POST TOKEN] ERROR: {e}")
+
+        page.screenshot(path=f"/tmp/test_{nombre[:25].replace('/','_')}.png")
 
         return {
             "nombre": nombre,
-            "bloqueado": bloqueado,
+            "imperva": imperva,
             "sin_citas": sin_citas,
             "con_citas": con_citas,
             "html_chars": len(html),
-            "requests_red": len(requests_capturadas),
+            "bookitit_requests": len(bookitit_reqs),
         }
 
     except Exception as e:
-        log(f"  [ERROR] {type(e).__name__}: {e}")
+        log(f"  [ERROR FATAL] {type(e).__name__}: {e}")
         return {"nombre": nombre, "error": str(e)}
     finally:
-        page.remove_listener("request", on_request)
-        page.remove_listener("response", on_response)
+        page.close()
 
 
 def main():
-    log("=" * 70)
-    log("OVC TEST — Playwright: app.bookitit.com vs citaconsular.es")
-    log("Objetivo: verificar si Imperva bloquea solo citaconsular.es o tambien app.bookitit.com")
-    log("=" * 70)
-
-    resultados = []
+    log("="*70)
+    log("OVC TEST v2 — Playwright profundo: red + iframes + fetch manual + POST token")
+    log("="*70)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-                "--lang=es-ES",
-            ]
+            args=["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage",
+                  "--disable-blink-features=AutomationControlled","--lang=es-ES"]
         )
-
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             locale="es-ES",
             timezone_id="Europe/Madrid",
             viewport={"width": 1280, "height": 800},
-            extra_http_headers={
-                "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            }
+            extra_http_headers={"Accept-Language": "es-ES,es;q=0.9,en;q=0.8"}
         )
-
-        # Eliminar señales de automatizacion
         context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en'] });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['es-ES','es','en'] });
             window.chrome = { runtime: {} };
         """)
 
-        page = context.new_page()
-
-        # TEST 1: app.bookitit.com (sin Imperva esperado)
-        r1 = probar_url(page, WIDGET_BOOKITIT, "A-app.bookitit.com")
-        resultados.append(r1)
-        time.sleep(2)
-
-        # TEST 2: citaconsular.es (con Imperva - referencia)
-        r2 = probar_url(page, WIDGET_CITACONSULAR, "B-citaconsular.es")
-        resultados.append(r2)
+        r1 = probar_url(context, WIDGET_BOOKITIT,     "A-app.bookitit.com")
+        r2 = probar_url(context, WIDGET_CITACONSULAR, "B-citaconsular.es")
 
         browser.close()
 
-    # Resumen final
-    log("\n" + "=" * 70)
-    log("RESUMEN FINAL")
-    log("=" * 70)
-    for r in resultados:
+    log("\n" + "="*70)
+    log("RESUMEN")
+    log("="*70)
+    for r in [r1, r2]:
         if "error" in r:
             log(f"  {r['nombre']}: ERROR — {r['error']}")
-            continue
-        bloq = "BLOQUEADO ❌" if r.get("bloqueado") else "LIBRE ✅"
-        datos = "SIN CITAS (widget OK)" if r.get("sin_citas") else ("CON CITAS ✅" if r.get("con_citas") else "SIN DATOS")
-        log(f"  {r['nombre']}: {bloq} | Disponibilidad: {datos} | HTML: {r.get('html_chars','?')} chars")
-
-    log("")
-    r_bookitit = next((r for r in resultados if "bookitit" in r.get("nombre","").lower()), None)
-    r_citacons = next((r for r in resultados if "citaconsular" in r.get("nombre","").lower()), None)
-
-    if r_bookitit and r_citacons:
-        if not r_bookitit.get("bloqueado") and r_citacons.get("bloqueado"):
-            log("*** CONCLUSION: app.bookitit.com NO tiene Imperva — SOLUCION VIABLE ***")
-            log("    Accion: cambiar URL del bot de citaconsular.es a app.bookitit.com")
-        elif not r_bookitit.get("bloqueado") and not r_citacons.get("bloqueado"):
-            log("*** CONCLUSION: Ambas URLs pasan — quizas Imperva no bloquea Playwright con estos headers ***")
-            log("    Accion: verificar si los datos de disponibilidad se cargan correctamente")
-        elif r_bookitit.get("bloqueado") and r_citacons.get("bloqueado"):
-            log("*** CONCLUSION: Ambas bloqueadas — Imperva detecta GitHub Actions en ambos dominios ***")
-            log("    Accion: necesario ScrapingAnt (Paso 2) o curl_cffi mas profundo")
         else:
-            log("*** CONCLUSION: Resultado inesperado — revisar logs detallados arriba ***")
+            bloq = "BLOQUEADO ❌" if r.get("imperva") else "LIBRE ✅"
+            datos = "SIN CITAS (OK)" if r.get("sin_citas") else ("CON CITAS ✅" if r.get("con_citas") else "SIN DATOS")
+            log(f"  {r['nombre']}: {bloq} | Citas: {datos} | HTML: {r.get('html_chars')} | BkReqs: {r.get('bookitit_requests')}")
 
 
 if __name__ == "__main__":
