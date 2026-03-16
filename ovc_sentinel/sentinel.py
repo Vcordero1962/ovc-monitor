@@ -37,7 +37,7 @@ GITHUB_REPO        = os.getenv("GITHUB_REPO", "Vcordero1962/ovc-monitor")
 
 # Umbrales de alerta
 MAX_MIN_DESDE_ULTIMO_RUN_BOT  = 120  # minutos — GitHub Actions free throttlea cron a ~1.5h real (era 90, generaba falsas alarmas)
-MAX_HORAS_DESDE_HEARTBEAT     = 5    # horas   — si heartbeat no llegó en 5h → alerta
+MAX_HORAS_DESDE_HEARTBEAT     = 10   # horas   — GitHub free throttlea crons hasta 5-6h → 10h evita falsas alarmas (era 5h)
 CHECK_INTERVAL_MIN             = 30   # minutos entre cada ciclo del sentinel
 
 # ─── Estado interno (evitar spam de alertas repetidas) ───────────────────────
