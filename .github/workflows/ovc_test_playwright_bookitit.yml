@@ -1,0 +1,56 @@
+name: OVC Test Playwright Bookitit
+
+# Prueba si Playwright en app.bookitit.com (sin Imperva) puede ver disponibilidad
+# sin necesidad de proxy residencial
+# Ejecutar manualmente: gh workflow run ovc_test_playwright_bookitit.yml
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Instalar Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Test Playwright en app.bookitit.com vs citaconsular.es
+        env:
+          PK: "28db94e270580be60f6e00285a7d8141f"
+          SID: "bkt873048"
+          CHROMIUM_PROFILE_DIR: /tmp/chromium-ovc-test
+        run: python ovc_test_playwright_bookitit.py
+
+      - name: Subir screenshots como artefactos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-bookitit-test
+          path: /tmp/test_*.png
+          if-no-files-found: ignore
