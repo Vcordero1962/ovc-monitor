@@ -106,10 +106,20 @@ jobs:
 
       - name: Verificar disponibilidad
         env:
-          URL_SISTEMA:              ${{ secrets.URL_SISTEMA }}
+          # ── Telegram ──────────────────────────────────────────────────────
           TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
           ADMIN_CHAT_ID:            ${{ secrets.ADMIN_CHAT_ID }}
+          # ── URLs de cada servicio consular (La Habana) ────────────────────
+          URL_SISTEMA:              ${{ secrets.URL_SISTEMA }}   # legacy — igual a URL_LEGA
+          URL_LEGA:                 ${{ secrets.URL_LEGA }}
+          URL_LMD:                  ${{ secrets.URL_LMD }}
+          URL_PASAPORTE:            ${{ secrets.URL_PASAPORTE }}
+          URL_VISADO:               ${{ secrets.URL_VISADO }}
+          URL_MATRIMONIO:           ${{ secrets.URL_MATRIMONIO }}
+          URL_NACIMIENTO:           ${{ secrets.URL_NACIMIENTO }}
+          URL_NOTARIAL:             ${{ secrets.URL_NOTARIAL }}
+          # ── Configuración de tramites a monitorear ────────────────────────
           AVC_TRAMITE:              ${{ secrets.AVC_TRAMITE }}
           CHROMIUM_PROFILE_DIR:     /home/runner/.config/chromium-ovc
           # 1 = verifica sitio directo con Playwright (IPs de GA superan Imperva gate sin proxy)
