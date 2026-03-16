@@ -118,6 +118,9 @@ jobs:
           # 0 (default) = Playwright usa IP directa del runner (GitHub Actions — sin proxy)
           # 1 = Playwright usa HTTP_PROXY_URL (solo si Imperva empieza a bloquear DCs)
           PLAYWRIGHT_PROXY_ENABLED: ${{ secrets.PLAYWRIGHT_PROXY_ENABLED }}
+          # 1 (default) = envía mensaje silencioso al admin al final de cada run
+          # 0 = solo notifica cuando hay citas (sin confirmación de run)
+          STATUS_CADA_RUN:          ${{ secrets.STATUS_CADA_RUN }}
           # Proxy residencial — mantenido para uso futuro / diagnóstico
           # Webshare Static Residential: http://user:pass@IP:PORT
           HTTP_PROXY_URL:           ${{ secrets.HTTP_PROXY_URL }}

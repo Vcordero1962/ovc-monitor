@@ -52,6 +52,13 @@ SITIO_DIRECTO_ENABLED = os.getenv("SITIO_DIRECTO_ENABLED", "1") == "1"
 #   (necesario solo si Imperva empieza a bloquear IPs de datacenter con JS)
 PLAYWRIGHT_PROXY_ENABLED = os.getenv("PLAYWRIGHT_PROXY_ENABLED", "0") == "1"
 
+# ─── Confirmación de run al admin ─────────────────────────────────────────────
+# STATUS_CADA_RUN=1 (default) → envía mensaje silencioso al ADMIN_CHAT_ID
+#   al final de cada run confirmando que el bot corrió y qué encontró.
+#   Útil para verificar que el bot está vivo sin esperar una cita real.
+# STATUS_CADA_RUN=0 → no envía confirmación (solo avisa cuando hay citas)
+STATUS_CADA_RUN = os.getenv("STATUS_CADA_RUN", "1") == "1"
+
 # ─── Perfil persistente de Chromium ──────────────────────────────────────────
 # El user-data-dir se cachea en GitHub Actions entre runs.
 # Resultado: el sitio ve una sesión que "ya existía", no un browser virgen.
@@ -990,6 +997,8 @@ if __name__ == "__main__":
     #    Requiere proxy RESIDENCIAL para bypassar Imperva desde GitHub Actions.
     #    Si SITIO_DIRECTO_ENABLED=0 se salta completamente (ahorra 3+ min/run).
     hits_sitio = []
+    hits_bkt   = []   # inicializar aquí — puede no asignarse si BOOKITIT_POST_ENABLED=0
+    hits_avc   = []   # inicializar aquí — siempre se reasigna más adelante
     if SITIO_DIRECTO_ENABLED:
         log(f"Verificando sitio oficial ({len(tramites)} servicios)...")
         hits_sitio = verificar_sitios_multi(tramites)
@@ -1097,3 +1106,39 @@ if __name__ == "__main__":
         log("  AVC: sin novedad")
 
     log("=== Check completado ===")
+
+    # ── Confirmación de run al admin ──────────────────────────────────────────
+    # Mensaje silencioso al chat personal. Llega sin sonido para no molestar.
+    # Permite verificar que el bot está vivo sin esperar una cita real.
+    if STATUS_CADA_RUN and ADMIN_CHAT_ID and TELEGRAM_BOT_TOKEN:
+        sitio_txt = "omitido" if not SITIO_DIRECTO_ENABLED else (
+            "🚨 CITA" if hits_sitio else "✅ sin citas"
+        )
+        bkt_txt   = "omitido" if not BOOKITIT_POST_ENABLED else (
+            "🚨 CITA" if hits_bkt  else "✅ sin citas"
+        )
+        avc_txt   = "🚨 ALERTA" if hits_avc else "✅ sin novedad"
+        tramites_str = ", ".join(tramites)
+        status_msg = (
+            f"🤖 <b>OVC — run completado</b>\n"
+            f"⏰ {hora}\n\n"
+            f"🌐 Sitio oficial: {sitio_txt}\n"
+            f"📡 Bookitit POST: {bkt_txt}\n"
+            f"📢 Canal AVC:     {avc_txt}\n\n"
+            f"<i>Servicios: {tramites_str}</i>"
+        )
+        try:
+            import requests as _req
+            _req.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id":              ADMIN_CHAT_ID,
+                    "text":                 status_msg,
+                    "parse_mode":           "HTML",
+                    "disable_notification": True,   # silencioso — no suena
+                },
+                timeout=10,
+            )
+            log("  Confirmacion enviada al admin (silencioso)")
+        except Exception as _e:
+            log(f"  Confirmacion admin: error ({_e})")
