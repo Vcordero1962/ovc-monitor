@@ -1,0 +1,73 @@
+name: OVC Burst — Ventana Critica
+
+# Modo Ráfaga: corre durante 35 minutos sondeando Bookitit cada ~45 segundos.
+# Ideal para la ventana de apertura de citas (tipicamente 8:00 AM Madrid / 17:00-18:00 Miami).
+#
+# Cron por defecto: 21:55 UTC = 17:55 Miami (UTC-4) — antes de la ventana 18:00.
+# Ajustar si el consulado cambia el horario de apertura.
+# Para disparar manualmente: gh workflow run ovc_burst.yml
+#
+# NO necesita Playwright, WireGuard, ni proxy residencial.
+# Solo requests Python + Bookitit POST token flow.
+
+on:
+  schedule:
+    - cron: '55 11 * * *'  # 11:55 UTC = 07:55 Madrid (08:00 es apertura tipica)
+    - cron: '55 21 * * *'  # 21:55 UTC = 17:55 Miami  (18:00 es apertura tipica)
+  workflow_dispatch:
+    inputs:
+      max_min:
+        description: 'Minutos de vigilancia continua (default: 35)'
+        required: false
+        default: '35'
+      poll_interval:
+        description: 'Segundos base entre polls (default: 45)'
+        required: false
+        default: '45'
+
+concurrency:
+  group: ovc-burst-unico
+  cancel-in-progress: true  # Solo un burst activo a la vez
+
+jobs:
+  burst:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45  # MAX_MIN(35) + margen de seguridad
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-burst-${{ runner.os }}-v1
+          restore-keys: pip-burst-${{ runner.os }}-
+
+      - name: Instalar dependencias (solo requests — sin Playwright)
+        run: pip install requests python-dotenv
+
+      - name: Burst de vigilancia
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADMIN_CHAT_ID:      ${{ secrets.ADMIN_CHAT_ID }}
+          URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
+          URL_LEGA:           ${{ secrets.URL_LEGA }}
+          URL_LMD:            ${{ secrets.URL_LMD }}
+          URL_PASAPORTE:      ${{ secrets.URL_PASAPORTE }}
+          URL_VISADO:         ${{ secrets.URL_VISADO }}
+          URL_MATRIMONIO:     ${{ secrets.URL_MATRIMONIO }}
+          URL_NACIMIENTO:     ${{ secrets.URL_NACIMIENTO }}
+          URL_NOTARIAL:       ${{ secrets.URL_NOTARIAL }}
+          AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+          MAX_MIN:            ${{ github.event.inputs.max_min || '35' }}
+          POLL_INTERVAL:      ${{ github.event.inputs.poll_interval || '45' }}
+          POLL_JITTER:        '10'
+        run: python ovc_burst.py
