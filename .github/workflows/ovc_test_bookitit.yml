@@ -1,0 +1,30 @@
+name: OVC Test Bookitit Direct
+
+# Ejecutar manualmente para probar si app.bookitit.com
+# responde sin Imperva desde IPs de GitHub Actions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install requests curl_cffi
+
+      - name: Test endpoints Bookitit
+        env:
+          PK: "28db94e270580be60f6e00285a7d8141f"
+          SID: "bkt873048"
+        run: python ovc_test_bookitit.py
