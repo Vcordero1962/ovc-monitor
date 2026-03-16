@@ -987,7 +987,10 @@ if __name__ == "__main__":
     time.sleep(espera)
 
     tramites = get_tramites_activos()
-    hora = datetime.now().strftime("%H:%M del %d/%m/%Y")
+    # Hora en Miami (UTC-4 EDT en verano, UTC-5 EST en invierno)
+    # GitHub Actions corre en UTC — convertimos para mostrar hora local del usuario
+    _miami = datetime.now(timezone.utc) - timedelta(hours=4)  # EDT (mar-nov)
+    hora = _miami.strftime("%I:%M %p del %d/%m/%Y (Miami)")
     log(f"=== OVC check — {hora} — tramites: {', '.join(tramites)} ===")
 
     if not URL_SISTEMA and not any(os.getenv(SERVICIOS[t]["url_env"], "") for t in tramites):
