@@ -8,7 +8,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -112,10 +112,13 @@ jobs:
           ADMIN_CHAT_ID:            ${{ secrets.ADMIN_CHAT_ID }}
           AVC_TRAMITE:              ${{ secrets.AVC_TRAMITE }}
           CHROMIUM_PROFILE_DIR:     /home/runner/.config/chromium-ovc
-          # 1 = verifica sitio directo (requiere proxy RESIDENCIAL real)
-          # 0 = solo canal AVC (no necesita proxy — datacenter funciona ok)
+          # 1 = verifica sitio directo con Playwright (IPs de GA superan Imperva gate sin proxy)
+          # 0 = solo canal AVC (sin Playwright)
           SITIO_DIRECTO_ENABLED:    ${{ secrets.SITIO_DIRECTO_ENABLED }}
-          # Proxy residencial — solo necesario cuando SITIO_DIRECTO_ENABLED=1
+          # 0 (default) = Playwright usa IP directa del runner (GitHub Actions — sin proxy)
+          # 1 = Playwright usa HTTP_PROXY_URL (solo si Imperva empieza a bloquear DCs)
+          PLAYWRIGHT_PROXY_ENABLED: ${{ secrets.PLAYWRIGHT_PROXY_ENABLED }}
+          # Proxy residencial — mantenido para uso futuro / diagnóstico
           # Webshare Static Residential: http://user:pass@IP:PORT
           HTTP_PROXY_URL:           ${{ secrets.HTTP_PROXY_URL }}
         run: python ovc_once.py

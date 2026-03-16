@@ -27,22 +27,30 @@ ADMIN_CHAT_ID      = os.getenv("ADMIN_CHAT_ID", "")           # chat personal ad
 AVC_TRAMITE        = os.getenv("AVC_TRAMITE", "ALL").upper()  # "ALL" o "LMD,LEGA" o "LMD"
 
 # ─── Proxy residencial ────────────────────────────────────────────────────────
-# GitHub Actions usa IPs de datacenter → Imperva las bloquea directamente.
-# Un proxy residencial europeo hace que el tráfico salga desde una IP de hogar real.
+# Mantenido para diagnóstico y uso futuro. Por defecto Playwright NO lo usa
+# (PLAYWRIGHT_PROXY_ENABLED=0) porque las IPs de GitHub Actions superan la gate
+# de Imperva directamente (GET/POST 200 confirmado sin proxy).
 # Formato: http://usuario:contraseña@host:puerto
 # Webshare.io static residential: http://user:pass@IP:PORT
-# Si está vacío → el bot corre sin proxy (útil para AVC, que no bloquea DCs)
+# Si está vacío → sin proxy (AVC Telegram nunca requiere proxy)
 HTTP_PROXY_URL = os.getenv("HTTP_PROXY_URL", "")
 
 # ─── Control de verificación directa del sitio ───────────────────────────────
 # SITIO_DIRECTO_ENABLED=1 → verifica el widget de citaconsular.es con Playwright
 # SITIO_DIRECTO_ENABLED=0 → salta el check directo, solo usa canal AVC
 #
-# Cuándo usar 0: cuando el proxy disponible es de datacenter (Imperva lo bloquea
-#   igual que GitHub Actions) — ahorra 3+ min por run en reintentos inútiles.
-# Cuándo usar 1: cuando tengas un proxy RESIDENCIAL real (Webshare Static Residential,
-#   Oxylabs, BrightData, etc.) — IP de hogar europeo que Imperva no detecta como bot.
+# Las IPs de GitHub Actions NO están IP-bloqueadas por Imperva — la gate de Imperva
+# es un click-through (token POST), no un bloqueo real. Playwright lo supera
+# directamente sin proxy residencial.
+# Usar 0 solo si Playwright falla de forma persistente (ej. Imperva cambia política).
 SITIO_DIRECTO_ENABLED = os.getenv("SITIO_DIRECTO_ENABLED", "1") == "1"
+
+# ─── Control de proxy para Playwright ────────────────────────────────────────
+# PLAYWRIGHT_PROXY_ENABLED=0 (default) → Playwright usa IP directa del runner
+#   (GitHub Actions IPs no están IP-bloqueadas — GET/POST 200 confirmado sin proxy)
+# PLAYWRIGHT_PROXY_ENABLED=1 → Playwright usa HTTP_PROXY_URL (residencial)
+#   (necesario solo si Imperva empieza a bloquear IPs de datacenter con JS)
+PLAYWRIGHT_PROXY_ENABLED = os.getenv("PLAYWRIGHT_PROXY_ENABLED", "0") == "1"
 
 # ─── Perfil persistente de Chromium ──────────────────────────────────────────
 # El user-data-dir se cachea en GitHub Actions entre runs.
@@ -500,11 +508,12 @@ def verificar_url_widget(url: str) -> tuple:
 
         USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Proxy residencial — si está configurado, todo el tráfico del browser
-        # sale por IP de hogar europeo en vez de datacenter de Azure/GitHub
+        # Proxy residencial — solo si PLAYWRIGHT_PROXY_ENABLED=1 Y HTTP_PROXY_URL está set.
+        # Por defecto Playwright corre con IP directa del runner (GitHub Actions):
+        # las IPs de datacenter superan la gate de Imperva sin proxy (confirmado — GET/POST 200).
         # Playwright requiere username/password SEPARADOS del server (no en la URL)
         proxy_cfg = None
-        if HTTP_PROXY_URL:
+        if HTTP_PROXY_URL and PLAYWRIGHT_PROXY_ENABLED:
             try:
                 from urllib.parse import urlparse
                 _p = urlparse(HTTP_PROXY_URL)
@@ -517,7 +526,8 @@ def verificar_url_widget(url: str) -> tuple:
             except Exception as _pe:
                 log(f"  Proxy: error parseando URL — {_pe}")
         else:
-            log("  Proxy: no configurado (IP directa del runner)")
+            reason = "PLAYWRIGHT_PROXY_ENABLED=0" if HTTP_PROXY_URL else "HTTP_PROXY_URL no configurado"
+            log(f"  Proxy: no usado ({reason}) — IP directa del runner")
 
         with sync_playwright() as p:
             # launch_persistent_context: reutiliza cookies/storage del run anterior
@@ -625,14 +635,36 @@ def verificar_url_widget(url: str) -> tuple:
                 page.goto(url, timeout=to_widget, wait_until="domcontentloaded")
                 human_sleep(1.2, 4.0)
 
+                # Paso 2b: detectar y superar el captcha gate de Imperva
+                # El gate NO es un CAPTCHA real — solo requiere enviar un token oculto
+                # (el mismo flujo GET→POST que verificar_bookitit_post_url, via Playwright)
+                # Funciona desde IPs de datacenter (GitHub Actions) sin proxy residencial.
+                try:
+                    if page.locator('input[name="token"]').count() > 0:
+                        log("  Imperva gate detectado — enviando token via Playwright...")
+                        page.locator(
+                            'button[type="submit"], input[type="submit"], '
+                            'button:has-text("Continuar"), button:has-text("Continue"), '
+                            'a:has-text("Continuar"), a:has-text("Continue")'
+                        ).first.click(timeout=8000)
+                        # networkidle: espera a que loadermaec.js ejecute la llamada JSONP completa
+                        page.wait_for_load_state("networkidle", timeout=25000)
+                        log(f"  Gate superado — {len(page.content())} chars tras POST token")
+                        human_sleep(0.5, 1.5)
+                except Exception as gate_e:
+                    log(f"  Gate handling (ignorado): {gate_e}")
+
                 page.evaluate("window.scrollTo({top: Math.floor(Math.random()*150+30), behavior:'smooth'})")
                 human_sleep(0.5, 1.2)
 
                 try:
                     page.wait_for_selector(
-                        "#bk-widget, #bookitit-widget, .bk-container, #datetime",
-                        timeout=25000,
+                        "#bk-widget, #bookitit-widget, .bk-container, #datetime, "
+                        ".bk-time-slot, .bk-slot, [class*='bk-hour'], [class*='bk-time']",
+                        timeout=20000,
                     )
+                    # Dar tiempo extra para que el JSONP renderice todos los slots
+                    human_sleep(2.0, 3.0)
                 except PWT:
                     pass
 
@@ -644,17 +676,25 @@ def verificar_url_widget(url: str) -> tuple:
                 update_session_stamp()
 
                 if TEXTO_BLOQUEADO in contenido:
-                    log("  Sitio: bloqueado explicitamente (sin horas)")
+                    log("  Sitio: sin horas disponibles (confirmado)")
                     return False, None, True   # bloqueado definitivo — no reintentar
 
-                indicadores = ["bookitit", "bk-widget", "datetime", "Selecciona", "Confirmar", "horas"]
-                widget_ok = any(i in contenido for i in indicadores)
-                if widget_ok:
-                    log("  Sitio: CITA DISPONIBLE — capturando screenshot")
+                # Indicadores de slots reales renderizados post-JSONP
+                # (evitar falsos positivos con el HTML estático del bkt_init_widget)
+                import re as _re
+                slots_hora = len(_re.findall(r'\b\d{2}:\d{2}\b', contenido))
+                indicadores_widget = ["Selecciona", "Confirmar", "bk-time-slot", "bk-slot", "bk-hour"]
+                widget_con_slots = slots_hora >= 3 or any(i in contenido for i in indicadores_widget)
+
+                if widget_con_slots:
+                    log(f"  Sitio: CITA DISPONIBLE — {slots_hora} slots hora detectados — capturando screenshot")
                     screenshot = page.screenshot(type="png", full_page=False)
                     return True, screenshot, False
+                elif "bkt_init_widget" in contenido or "bookitit" in contenido.lower():
+                    log("  Sitio: widget cargado pero sin slots disponibles (JSONP sin citas)")
+                    return False, None, True   # confirmado sin citas — no reintentar
                 else:
-                    log("  Sitio: widget vacio (posible bloqueo por IP o captcha)")
+                    log("  Sitio: widget vacio (posible bloqueo por IP o error)")
                     return False, None, False  # bloqueo temporal — reintentar
 
             except PWT:
@@ -668,11 +708,12 @@ def verificar_url_widget(url: str) -> tuple:
         return False, None, False
 
 
-def verificar_url_con_retry(url: str, max_intentos: int = 3) -> tuple:
+def verificar_url_con_retry(url: str, max_intentos: int = 2) -> tuple:
     """
     Wrapper con retry exponencial sobre verificar_url_widget.
     Solo reintenta si fue bloqueo temporal (no en bloqueo definitivo).
-    Delays: intento 1=inmediato, intento 2=+8s, intento 3=+20s
+    Delays: intento 1=inmediato, intento 2=+8s
+    max_intentos reducido de 3→2 para que el workflow quepa en 10 min.
     Retorna (disponible, screenshot_bytes).
     """
     delays = [0, 8, 20]
