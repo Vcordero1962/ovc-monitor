@@ -254,8 +254,8 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
-                # Navegar al widget
-                page.goto(url, timeout=to_widget, wait_until="domcontentloaded")
+                # Navegar al widget — networkidle espera a que los AJAX de Bookitit terminen
+                page.goto(url, timeout=to_widget, wait_until="networkidle")
                 _human_sleep(1.2, 4.0)
 
                 # Imperva gate bypass
@@ -296,7 +296,11 @@ def _check_url_widget(url: str) -> tuple:
                     return False, None, True
 
                 slots_hora = len(re.findall(r'\b\d{2}:\d{2}\b', contenido))
-                indicadores = ["Selecciona", "Confirmar", "bk-time-slot", "bk-slot", "bk-hour"]
+                indicadores = [
+                    "Selecciona", "Confirmar", "bk-time-slot", "bk-slot", "bk-hour",
+                    "Huecos libres", "Hueco libre", "Huecos Libres", "Hueco Libre",
+                    "Cambiar de día", "huecos_libres", "free_slots",
+                ]
                 widget_con_slots = slots_hora >= 3 or any(i in contenido for i in indicadores)
 
                 if widget_con_slots:
