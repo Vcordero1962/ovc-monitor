@@ -254,6 +254,25 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
+                # Interceptar respuestas de red de Bookitit ANTES de navegar al widget
+                # Captura los AJAX cross-origin sin restricción de same-origin policy
+                bkt_responses: list = []
+
+                def _capture_bkt_response(response):
+                    try:
+                        url_r = response.url
+                        if response.status == 200 and any(
+                            k in url_r for k in ["bookitit", "onlinebookings", "bkt_init", "widgetdefault"]
+                        ):
+                            body = response.text()
+                            if len(body) > 100:
+                                bkt_responses.append(body)
+                                info(f"BKT response capturado: {len(body)} chars — {url_r[:70]}")
+                    except Exception:
+                        pass
+
+                page.on("response", _capture_bkt_response)
+
                 # Navegar al widget — networkidle espera a que los AJAX de Bookitit terminen
                 page.goto(url, timeout=to_widget, wait_until="networkidle")
                 _human_sleep(1.2, 4.0)
@@ -288,23 +307,13 @@ def _check_url_widget(url: str) -> tuple:
 
                 _human_sleep(0.4, 1.5)
 
-                # Recopilar contenido: página principal + todos los iframes
-                # El widget de Bookitit se renderiza dentro de un <iframe> en citaconsular.es
+                # Recopilar contenido: página principal + respuestas de red interceptadas
+                # (los iframes cross-origin no son legibles via DOM — usamos network interception)
                 contenido = page.content()
-                contenido_total = contenido
+                bkt_data = " ".join(bkt_responses)
+                contenido_total = contenido + bkt_data
 
-                for frame in page.frames:
-                    if frame == page.main_frame:
-                        continue
-                    try:
-                        frame_content = frame.content()
-                        if len(frame_content) > 200:
-                            contenido_total += frame_content
-                            info(f"Iframe [{frame.url[:60]}]: {len(frame_content)} chars")
-                    except Exception:
-                        pass
-
-                info(f"Playwright contenido: {len(contenido)} chars página + {len(contenido_total)-len(contenido)} chars iframes")
+                info(f"Playwright contenido: {len(contenido)} chars página + {len(bkt_data)} chars BKT network ({len(bkt_responses)} resp)")
                 _update_session_stamp()
 
                 if TEXTO_BLOQUEADO in contenido_total:
