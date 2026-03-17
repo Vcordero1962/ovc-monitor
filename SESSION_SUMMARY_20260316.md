@@ -5,6 +5,8 @@ Construir modelo de suscripción pago (PostgreSQL Neon), bot gestor @ovc_gestor_
 con administración 100% vía Telegram, alertas DM privadas con watermark anti-scraping,
 y eliminar toda dependencia del canal AVC (competidor directo).
 
+> **Sesión extendida** — Protocolo de cierre ejecutado al finalizar (madrugada España)
+
 ---
 
 ## ✅ Logros
@@ -83,6 +85,21 @@ y eliminar toda dependencia del canal AVC (competidor directo).
 
 ---
 
+### 9. Limpieza AVC completa — commit `c2df794`
+- **Archivo**: `core/config.py` — elimina `URL_AVC`, `AVC_ALERTAS` list
+- **Archivo**: `core/telegram.py` — elimina import `URL_AVC`, botón "📢 Ver aviso oficial en AVC" del keyboard, simplifica `generar_card()` a un único estilo rojo urgente
+- Antes: alertas al grupo tenían botón que enviaba a canal AVC (competidor)
+- Después: solo botón "🔴🔴 RESERVAR CITA — ENTRA YA 🔴🔴" con enlace directo al widget
+
+### 10. Arquitectura de roles — documentado
+- **Vladimir** = responsable técnico (GitHub, código, OVC Monitor Consular)
+- **Administrador (Daysi @daysi7404)** = gestión suscripciones exclusivamente vía @ovc_gestor_bot
+- **Suscriptores** = miembros de "OVC Alertas Consulado" + DM privado si pagan
+- Daysi tiene 1 grupo en común (OVC Alertas Consulado), candidata a administradora
+- Para activarla: obtener su ID numérico vía @userinfobot → `gh secret set ADMIN_TELEGRAM_ID`
+
+---
+
 ## 🔨 Commits esta sesión
 
 | Hash | Descripción |
@@ -92,40 +109,47 @@ y eliminar toda dependencia del canal AVC (competidor directo).
 | `f337e63` | fix: reconexion SSL Neon + sentinel threshold 150min + manual admin |
 | `f2be8b4` | fix: hora Miami en /admin_stats (era UTC) |
 | `3b9d466` | Remove AVC canal dependency — OVC es independiente y no depende de competidores |
+| `95c3567` | docs: cierre sesion Mar 16 — arquitectura v2.0 sin AVC |
+| `c2df794` | fix: eliminar toda referencia AVC de config.py y telegram.py |
 
 ---
 
 ## 🤖 Estado Bot al cierre
 
-- **GitHub Actions ovc_monitor**: ✅ corriendo (run `23175658906` in_progress)
-- **GitHub Actions ovc_bot**: ⚠️ falla en push (ver Pendiente #1)
-- **Sentinel Docker**: ✅ `ovc-sentinel` Up 28 minutes
+- **GitHub Actions ovc_monitor**: ✅ SUCCESS (run `23175658906`, 8m32s)
+- **GitHub Actions ovc_bot**: ⚠️ falla con "workflow file issue" en 0s — ver Pendiente #1
+- **Sentinel Docker**: ✅ `ovc-sentinel` Up ~1 hora
 - **Bookitit POST**: ✅ activo, $0, ~5s/check
 - **Sitio directo (Playwright)**: ⛔ `SITIO_DIRECTO_ENABLED=0` (sin proxy residencial)
-- **AVC canal**: ❌ eliminado (decisión de negocio definitiva)
+- **AVC canal**: ❌ eliminado definitivamente — código + botones + imports limpiados
 
 ---
 
 ## ❌ Pendiente
 
-1. **ovc_bot.yml falla en push triggers** — el workflow se activa con cambios en `core/**` pero el bot necesita polling continuo. El fallo en "0s" sugiere que el workflow cancela el run anterior o que los secrets no están configurados en GitHub. Verificar con: `gh run view 23175592736 --repo Vcordero1962/ovc-monitor --log`
+1. **ovc_bot.yml "workflow file issue"** — GitHub reporta fallo en 0s con "This run likely failed because of a workflow file issue". El `run: python -X utf8 -c "` con comillas dobles en YAML puede causar parsing error. Fix próxima sesión: cambiar a `run: |` (block scalar) en el step "Aplicar schema DB". El bot gestor puede correr localmente mientras tanto: `python -X utf8 bot/ovc_bot.py`
 
-2. **`/admin_activar` por telegram_id** — actualmente solo acepta `@username`. Usuarios sin username público no pueden ser activados por comando (Vladimir fue activado directo en DB). Pendiente: agregar soporte para activación por ID numérico.
+2. **Activar a Daysi como administradora** — Obtener su Telegram ID numérico (via @userinfobot) y ejecutar: `gh secret set ADMIN_TELEGRAM_ID --repo Vcordero1962/ovc-monitor --body "ID_DAYSI"`
 
-3. **Prueba E2E completa** — /estado debería mostrar "Plan Directo activo hasta XX/XX/XXXX". Verificar que subscription de Vladimir (telegram_id=1951356386) es visible.
+3. **`/admin_activar` por telegram_id** — actualmente solo acepta `@username`. Usuarios sin username público no pueden ser activados. Pendiente: agregar soporte para activación por ID numérico.
 
-4. **Sentinel threshold** — quedó en 150 min en código pero el Docker container tiene el binario anterior bakeado. Requiere `docker compose build --no-cache` en carpeta `ovc_sentinel/` para aplicar el cambio.
+4. **Prueba E2E completa** — /estado debería mostrar "Plan Directo activo" para Vladimir (telegram_id=1951356386).
 
-5. **Watermark salt en código** — `core/watermark.py` tiene `_SALT = "OVC-WM-2026-SALT-INMUTABLE"` hardcodeado. Riesgo bajo (no es credencial de sistema) pero idealmente debería moverse a variable de entorno `WATERMARK_SALT`.
+5. **`core/avc.py` — dead code en repo** — el archivo sigue trackeado en git pero ya nadie lo importa. Limpiar con `git rm core/avc.py` en próxima sesión.
+
+6. **Sentinel threshold rebuild** — threshold cambiado en código a 150min pero Docker container tiene imagen anterior bakeada. Requiere: `cd ovc_sentinel && docker compose build --no-cache && docker compose up -d`
+
+7. **Watermark salt** — `_SALT = "OVC-WM-2026-SALT-INMUTABLE"` en `core/watermark.py`. Riesgo bajo pero mover a env var `WATERMARK_SALT` en próxima sesión.
 
 ---
 
 ## 🎯 Próxima sesión — empezar por
 
-1. **Diagnósticar ovc_bot.yml**: `gh run view 23175592736 --repo Vcordero1962/ovc-monitor --log` — ver por qué falla en 0s
-2. **Fix /admin_activar por ID**: agregar soporte `/admin_activar 1951356386 directo 90` (telegram_id numérico)
-3. **Rebuild sentinel**: `cd ovc_sentinel && docker compose build --no-cache && docker compose up -d` para aplicar threshold 150min
-4. **Prueba /estado**: verificar que muestra plan activo de Vladimir
+1. **Fix ovc_bot.yml** — cambiar step "Aplicar schema DB" de `run: python -X utf8 -c "..."` a `run: |` block scalar
+2. **Activar Daysi como admin** — `gh secret set ADMIN_TELEGRAM_ID --body "ID_NUMERICO_DAYSI"`
+3. **Limpiar core/avc.py** — `git rm core/avc.py && git commit -m "chore: eliminar avc.py obsoleto"`
+4. **Rebuild sentinel** — `cd ovc_sentinel && docker compose build --no-cache && docker compose up -d`
+5. **Fix /admin_activar por ID numérico** — soporte para usuarios sin @username público
 
 ---
 
