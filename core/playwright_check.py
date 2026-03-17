@@ -257,17 +257,22 @@ def _check_url_widget(url: str) -> tuple:
                 # Interceptar respuestas de red de Bookitit ANTES de navegar al widget
                 # Captura los AJAX cross-origin sin restricción de same-origin policy
                 bkt_responses: list = []
+                all_net_urls: list = []
 
                 def _capture_bkt_response(response):
                     try:
                         url_r = response.url
+                        # Log ALL requests de dominios relevantes (diagnóstico)
+                        if any(d in url_r for d in ["bookitit", "citaconsular", "onlinebooking"]):
+                            all_net_urls.append(f"[{response.status}] {url_r[:90]}")
+                        # Capturar cuerpo: JSONP/JSON de Bookitit (no HTML wrapper)
                         if response.status == 200 and any(
-                            k in url_r for k in ["bookitit", "onlinebookings", "bkt_init", "widgetdefault"]
+                            k in url_r for k in ["onlinebookings", "bkt_init", "agendas", "services"]
                         ):
                             body = response.text()
-                            if len(body) > 100:
+                            if len(body) > 100 and "<html" not in body[:50]:
                                 bkt_responses.append(body)
-                                info(f"BKT response capturado: {len(body)} chars — {url_r[:70]}")
+                                info(f"BKT data capturado: {len(body)} chars — {url_r[:70]}")
                     except Exception:
                         pass
 
@@ -314,6 +319,7 @@ def _check_url_widget(url: str) -> tuple:
                 contenido_total = contenido + bkt_data
 
                 info(f"Playwright contenido: {len(contenido)} chars página + {len(bkt_data)} chars BKT network ({len(bkt_responses)} resp)")
+                info(f"Red total [{len(all_net_urls)} req]: {' | '.join(all_net_urls[:8])}")
                 if bkt_data:
                     info(f"BKT preview: {bkt_data[:300].replace(chr(10), ' ')}")
                 _update_session_stamp()
