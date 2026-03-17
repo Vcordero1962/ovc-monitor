@@ -287,28 +287,44 @@ def _check_url_widget(url: str) -> tuple:
                     pass
 
                 _human_sleep(0.4, 1.5)
+
+                # Recopilar contenido: página principal + todos los iframes
+                # El widget de Bookitit se renderiza dentro de un <iframe> en citaconsular.es
                 contenido = page.content()
-                info(f"Playwright contenido: {len(contenido)} chars")
+                contenido_total = contenido
+
+                for frame in page.frames:
+                    if frame == page.main_frame:
+                        continue
+                    try:
+                        frame_content = frame.content()
+                        if len(frame_content) > 200:
+                            contenido_total += frame_content
+                            info(f"Iframe [{frame.url[:60]}]: {len(frame_content)} chars")
+                    except Exception:
+                        pass
+
+                info(f"Playwright contenido: {len(contenido)} chars página + {len(contenido_total)-len(contenido)} chars iframes")
                 _update_session_stamp()
 
-                if TEXTO_BLOQUEADO in contenido:
+                if TEXTO_BLOQUEADO in contenido_total:
                     info("Playwright: sin horas disponibles (confirmado)")
                     return False, None, True
 
-                slots_hora = len(re.findall(r'\b\d{2}:\d{2}\b', contenido))
+                slots_hora = len(re.findall(r'\b\d{2}:\d{2}\b', contenido_total))
                 indicadores = [
                     "Selecciona", "Confirmar", "bk-time-slot", "bk-slot", "bk-hour",
                     "Huecos libres", "Hueco libre", "Huecos Libres", "Hueco Libre",
                     "Cambiar de día", "huecos_libres", "free_slots",
                 ]
-                widget_con_slots = slots_hora >= 3 or any(i in contenido for i in indicadores)
+                widget_con_slots = slots_hora >= 3 or any(i in contenido_total for i in indicadores)
 
                 if widget_con_slots:
                     info(f"Playwright: CITA DISPONIBLE — {slots_hora} slots hora detectados")
                     screenshot = page.screenshot(type="png", full_page=False)
                     return True, screenshot, False
 
-                if "bkt_init_widget" in contenido or "bookitit" in contenido.lower():
+                if "bkt_init_widget" in contenido_total or "bookitit" in contenido_total.lower():
                     info("Playwright: widget cargado pero sin slots disponibles (JSONP sin citas)")
                     return False, None, True
 
