@@ -271,29 +271,29 @@ def _check_url_widget(url: str) -> tuple:
                 bkt_responses: list = []
 
                 def _route_jsonp(route):
-                    import requests as _req
                     orig_url = route.request.url
-                    # Reescribir dominio: citaconsular.es → app.bookitit.com
+                    # Reescribir dominio: citaconsular.es → app.bookitit.com (sin Imperva)
                     bkt_url = orig_url.replace(
                         "www.citaconsular.es", "app.bookitit.com"
                     ).replace("citaconsular.es", "app.bookitit.com")
                     try:
-                        r = _req.get(bkt_url, timeout=15, headers={
-                            "User-Agent":      route.request.headers.get("user-agent", ua),
-                            "Accept":          "*/*",
-                            "Referer":         "https://app.bookitit.com/",
-                            "Accept-Language": "es-ES,es;q=0.9",
-                        })
-                        body = r.text
-                        info(f"JSONP reescrito: {len(body)} chars — {bkt_url[:70]}")
-                        bkt_responses.append(body)
-                        route.fulfill(
-                            status=200,
-                            body=body,
-                            headers={"Content-Type": "application/javascript; charset=utf-8"},
+                        # route.fetch(url=...) — override nativo de Playwright, no bloquea event loop
+                        resp = route.fetch(
+                            url=bkt_url,
+                            headers={
+                                "User-Agent":      ua,
+                                "Accept":          "*/*",
+                                "Referer":         "https://app.bookitit.com/",
+                                "Accept-Language": "es-ES,es;q=0.9",
+                            },
                         )
+                        body = resp.text()
+                        info(f"JSONP→BKT: {len(body)} chars — {bkt_url[:70]}")
+                        if body and len(body) > 20:
+                            bkt_responses.append(body)
+                        route.fulfill(response=resp)
                     except Exception as re_e:
-                        info(f"JSONP rewrite error ({re_e}) — usando original")
+                        info(f"JSONP rewrite error ({re_e}) — continuando original")
                         route.continue_()
 
                 ctx.route("**/onlinebookings/main/**", _route_jsonp)
