@@ -9,13 +9,11 @@ Arquitectura modular — este archivo solo coordina:
   core/security.py        → validaciones anti-inyección
   core/bookitit.py        → check Bookitit POST (sin Playwright, sin proxy)
   core/playwright_check.py→ check sitio directo con Playwright + stealth
-  core/avc.py             → scraping canal AVC Telegram
   core/telegram.py        → envío de alertas y confirmaciones
 
-3 capas de detección (en orden):
+2 capas de detección (en orden):
   1. Sitio oficial (Playwright) — si SITIO_DIRECTO_ENABLED=1
   2. Bookitit POST directo      — si BOOKITIT_POST_ENABLED=1
-  3. Canal AVC                  — siempre
 """
 
 import sys
@@ -32,7 +30,6 @@ from core.config import (
 from core.logger  import info, warn, error, critical
 from core.security import validate_telegram_creds
 import core.bookitit       as bookitit
-import core.avc            as avc
 import core.telegram       as tg
 from core.alertas_dm import enviar_alerta_suscriptores
 
@@ -65,11 +62,10 @@ def main():
     # Verificar que al menos alguna URL esté configurada
     urls_configuradas = [t for t in tramites if get_url_for_tramite(t)]
     if not urls_configuradas:
-        warn("Ninguna URL de widget configurada — solo se verificará el canal AVC")
+        warn("Ninguna URL de widget configurada — no hay capas activas de detección")
 
     hits_sitio: list = []
     hits_bkt:   list = []
-    hits_avc:   list = []
 
     # ── Capa 1: Sitio oficial via Playwright ────────────────────────────────────
     if SITIO_DIRECTO_ENABLED:
@@ -96,7 +92,7 @@ def main():
             # ── DM privado a suscriptores con watermark ─────────────────────
             enviar_alerta_suscriptores(tramite, url, fecha_detectada=hora)
         if hits_sitio:
-            _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc)
+            _send_status(hora, tramites, hits_sitio, hits_bkt)
             sys.exit(0)
         info("[CAPA 1] Sin disponibilidad en sitio oficial")
     else:
@@ -127,48 +123,17 @@ def main():
             # ── DM privado a suscriptores con watermark ─────────────────────
             enviar_alerta_suscriptores(tramite, url, fecha_detectada=hora)
         if hits_bkt:
-            _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc)
+            _send_status(hora, tramites, hits_sitio, hits_bkt)
             sys.exit(0)
         info("[CAPA 2] Sin disponibilidad via Bookitit POST")
     else:
         info("[CAPA 2] Omitido (BOOKITIT_POST_ENABLED=0)")
 
-    # ── Capa 3: Canal AVC ───────────────────────────────────────────────────────
-    info(f"[CAPA 3] Canal AVC ({len(tramites)} servicios)...")
-    hits_avc = avc.check_all(tramites)
-    for tramite, nombre, detalle in hits_avc:
-        info(f"*** Alerta AVC: {nombre} ***")
-        url_servicio = get_url_for_tramite(tramite)
-        avc_msg = (
-            f"⚠️ <b>¡CITAS ABRIENDOSE PRONTO!</b>\n\n"
-            f"📋 <b>{nombre}</b>\n"
-            f"⏰ {hora}\n\n"
-            f"📢 {detalle[:180]}\n\n"
-            f"Ten el formulario listo. <b>Actua en cuanto abran.</b>\n\n"
-            f"💡 El consulado suele liberar citas a las <b>8:00 AM hora de España</b> "
-            f"(3:00 AM Miami / 7:00 AM UTC)."
-        )
-        card = tg.generar_card("AVC", nombre, hora, detalle)
-        if card:
-            tg.send_photo(avc_msg, card, url_boton=url_servicio)
-        else:
-            tg.send_text(avc_msg, url_boton=url_servicio)
-        tg.send_admin(
-            f"⚠️ <b>Alerta AVC — {nombre}</b>\n⏰ {hora}\nCitas abriendo pronto.",
-            url_boton=url_servicio, silencioso=True,
-        )
-        # ── DM privado a suscriptores con watermark ─────────────────────────
-        enviar_alerta_suscriptores(tramite, url_servicio,
-                                   fecha_detectada=hora, detalles=detalle[:100])
-
-    if not hits_avc:
-        info("[CAPA 3] Sin novedad en canal AVC")
-
-    info("=== Check completado ===")
-    _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc)
+    info("=== Check completado — sin disponibilidad detectada ===")
+    _send_status(hora, tramites, hits_sitio, hits_bkt)
 
 
-def _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc):
+def _send_status(hora, tramites, hits_sitio, hits_bkt):
     """Confirmación silenciosa de run al admin si STATUS_CADA_RUN=1."""
     if STATUS_CADA_RUN:
         tg.send_status(
@@ -176,7 +141,6 @@ def _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc):
             tramites=tramites,
             hits_sitio=hits_sitio,
             hits_bkt=hits_bkt,
-            hits_avc=hits_avc,
             sitio_enabled=SITIO_DIRECTO_ENABLED,
             bkt_enabled=BOOKITIT_POST_ENABLED,
         )

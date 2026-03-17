@@ -129,7 +129,6 @@ def send_status(
     tramites: list,
     hits_sitio: list,
     hits_bkt: list,
-    hits_avc: list,
     sitio_enabled: bool,
     bkt_enabled: bool,
 ) -> bool:
@@ -140,16 +139,14 @@ def send_status(
     if not _creds_ok() or not ADMIN_CHAT_ID:
         return False
 
-    sitio_txt = "omitido"      if not sitio_enabled else ("🚨 CITA" if hits_sitio else "✅ sin citas")
-    bkt_txt   = "omitido"      if not bkt_enabled   else ("🚨 CITA" if hits_bkt   else "✅ sin citas")
-    avc_txt   = "🚨 ALERTA"   if hits_avc          else "✅ sin novedad"
+    sitio_txt = "omitido" if not sitio_enabled else ("🚨 CITA" if hits_sitio else "✅ sin citas")
+    bkt_txt   = "omitido" if not bkt_enabled   else ("🚨 CITA" if hits_bkt   else "✅ sin citas")
 
     msg = (
         f"🤖 <b>OVC — run completado</b>\n"
         f"⏰ {hora}\n\n"
         f"🌐 Sitio oficial: {sitio_txt}\n"
-        f"📡 Bookitit POST: {bkt_txt}\n"
-        f"📢 Canal AVC:     {avc_txt}\n\n"
+        f"📡 Bookitit POST: {bkt_txt}\n\n"
         f"<i>Servicios: {', '.join(tramites)}</i>"
     )
     ok = _post("sendMessage", json={
