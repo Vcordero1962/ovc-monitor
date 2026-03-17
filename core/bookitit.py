@@ -39,19 +39,38 @@ def _human_sleep(min_s: float, max_s: float):
 
 def _parse_bkt_widget(text: str) -> dict:
     """
-    Extrae agendas[] y dates[] del objeto JS bkt_init_widget.
+    Extrae agendas[], dates[] y hours[] del objeto JS bkt_init_widget.
 
     Soporta claves con y sin comillas (JS estándar vs JSON).
-    dates[] con fechas YYYY-MM-DD = citas disponibles.
+    Busca fechas YYYY-MM-DD en todo el bloque (no solo en dates[]) porque
+    Bookitit puede anidar las fechas dentro de agendas[].dates o agendas[].hours.
     """
-    m  = re.search(r"(?:['\"]agendas['\"]|agendas)\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
-    m2 = re.search(r"(?:['\"]dates['\"]|dates)\s*:\s*(\[[^\]]*\])",     text, re.DOTALL)
-    agendas_raw = m.group(1)  if m  else "[]"
-    dates_raw   = m2.group(1) if m2 else "[]"
+    # --- agendas: contar objetos { en el bloque agendas (regex simple, no anidada)
+    m_ag = re.search(r"(?:['\"]agendas['\"]|agendas)\s*:\s*\[", text, re.DOTALL)
+    agendas_raw = ""
+    if m_ag:
+        # Extraer hasta 4000 chars del bloque agendas para cubrir estructuras grandes
+        agendas_raw = text[m_ag.end(): m_ag.end() + 4000]
+
+    # --- dates top-level (puede estar vacío si Bookitit anida fechas en agendas)
+    m2 = re.search(r"(?:['\"]dates['\"]|dates)\s*:\s*(\[[^\]]*\])", text, re.DOTALL)
+    dates_raw = m2.group(1) if m2 else "[]"
+
+    # --- búsqueda amplia: cualquier YYYY-MM-DD en TODO el bloque del widget
+    all_dates = re.findall(r'\d{4}-\d{2}-\d{2}', text)
+
+    # --- hours: indicador alternativo de disponibilidad (slots de hora HH:MM)
+    m_hours = re.search(r"(?:['\"]hours['\"]|hours)\s*:\s*\[([^\]]*)\]", text, re.DOTALL)
+    hours_raw = m_hours.group(1) if m_hours else ""
+    hours_count = len(re.findall(r'\d{1,2}:\d{2}', hours_raw))
+
+    dates_count = len(all_dates)
+
     return {
         "agendas_count": len(re.findall(r'\{', agendas_raw)),
-        "dates_count":   len(re.findall(r'\d{4}-\d{2}-\d{2}', dates_raw)),
-        "dates_raw":     dates_raw[:200],
+        "dates_count":   dates_count,
+        "hours_count":   hours_count,
+        "dates_raw":     str(all_dates[:5]),   # primeras 5 fechas encontradas
     }
 
 
@@ -151,21 +170,22 @@ def check_url(widget_url: str) -> tuple:
             warn("BKT: bkt_init_widget NO encontrado en POST response (Imperva bloqueó?)")
             return False, {}
 
-        data = _parse_bkt_widget(post_text[bkt_pos: bkt_pos + 1500])
+        data = _parse_bkt_widget(post_text[bkt_pos: bkt_pos + 8000])
         info(
             f"BKT: agendas={data['agendas_count']} "
             f"dates={data['dates_count']} "
-            f"raw={data['dates_raw'][:60]}"
+            f"hours={data['hours_count']} "
+            f"raw={data['dates_raw']}"
         )
 
-        if data["dates_count"] > 0:
-            info("BKT: *** FECHAS DISPONIBLES en dates[] ***")
+        if data["dates_count"] > 0 or data["hours_count"] > 0:
+            info("BKT: *** DISPONIBILIDAD DETECTADA (fechas o slots) ***")
             return True, data
 
         if data["agendas_count"] > 0:
-            info("BKT: agendas presentes pero dates[] vacío — sin citas hoy")
+            info("BKT: agendas presentes pero sin fechas ni horas — sin citas hoy")
         else:
-            info("BKT: agendas[] y dates[] vacíos — sin disponibilidad")
+            info("BKT: agendas[], dates[] y hours[] vacíos — sin disponibilidad")
 
         return False, data
 
