@@ -39,10 +39,8 @@ jobs:
           echo "Secrets OK"
 
       - name: Aplicar schema DB (idempotente)
-        run: python -X utf8 -c "
-from db.connection import ejecutar_schema
-ejecutar_schema()
-"
+        run: |
+          python -X utf8 -c "from db.connection import ejecutar_schema; ejecutar_schema()"
 
       - name: Arrancar bot gestor
         run: python -X utf8 bot/ovc_bot.py
