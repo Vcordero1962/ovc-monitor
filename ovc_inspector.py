@@ -43,6 +43,7 @@ load_dotenv(Path(__file__).parent / ".env")
 from core.config import (
     SERVICIOS, USER_AGENTS, get_tramites_activos, get_url_for_tramite,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ADMIN_CHAT_ID,
+    CF_WORKER_URL, CF_WORKER_SECRET, CF_WORKER_ENABLED,
 )
 from core.logger import info, warn, error
 
@@ -473,6 +474,88 @@ def etapa_bookitit_directo(tramite: str, url: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Etapa CF Worker: prueba del relay propio en Cloudflare edge
+# ─────────────────────────────────────────────────────────────────────────────
+
+def etapa_cf_worker(tramite: str, url: str) -> dict:
+    """Prueba el CF Worker relay con mode=jsonp y mode=full."""
+    info(f"\n{'─' * 60}")
+    info(f"ETAPA CF-WORKER [{tramite}]: relay Cloudflare edge")
+
+    if not CF_WORKER_ENABLED or not CF_WORKER_URL:
+        info("  CF_WORKER_URL no configurada — etapa omitida")
+        info("  Deploy en dash.cloudflare.com → Workers → ovc-relay")
+        return {"tramite": tramite, "omitida": True}
+
+    pk, sid = extract_pk_sid(url)
+    if not pk:
+        return {"tramite": tramite, "error": "PK no extraíble"}
+
+    info(f"  Worker URL: {CF_WORKER_URL}")
+    info(f"  PK: {pk[:16]}...  SID: {sid or 'N/A'}")
+
+    resultado = {"tramite": tramite, "pk": pk, "sid": sid, "modos": {}}
+
+    for mode in ["jsonp", "full"]:
+        params = {"pk": pk, "mode": mode}
+        if sid:
+            params["sid"] = sid
+        if CF_WORKER_SECRET:
+            params["secret"] = CF_WORKER_SECRET
+
+        info(f"\n  [mode={mode}]")
+        try:
+            t0 = time.time()
+            r = requests.get(CF_WORKER_URL, params=params,
+                             headers={"User-Agent": ua(), "Accept": "*/*"},
+                             timeout=40, allow_redirects=True)
+            lat = (time.time() - t0) * 1000
+            text = r.text
+            chars = len(text)
+            has_bkt = "bkt_init_widget" in text
+
+            info(f"    HTTP {r.status_code} | {chars} chars | {lat:.0f} ms | bkt={has_bkt}")
+            info(f"    X-OVC-Has-Bkt: {r.headers.get('X-OVC-Has-Bkt', '?')}")
+            if chars > 0:
+                info(f"    Preview: {text[:400].replace(chr(10), ' | ')}")
+
+            modo_res = {"status": r.status_code, "chars": chars, "lat_ms": lat, "has_bkt": has_bkt}
+
+            if r.status_code in (401, 403):
+                info(f"    ❌ Acceso denegado — verificar CF_WORKER_SECRET")
+                modo_res["error"] = "unauthorized"
+            elif has_bkt:
+                bkt_pos = text.find("bkt_init_widget")
+                data = parse_bkt_widget(text[bkt_pos: bkt_pos + 10000])
+                modo_res["data"] = data
+                modo_res["disponible"] = data["dates_count"] > 0 or data["hours_count"] > 0
+                info(f"    ✅ bkt_init_widget ENCONTRADO")
+                info(f"    agendas={data['agendas_count']} dates={data['dates_count']} hours={data['hours_count']}")
+                info(f"    dates: {data['dates']}")
+                if modo_res["disponible"]:
+                    info(f"    🟢🟢 *** CITA DISPONIBLE VIA CF WORKER *** 🟢🟢")
+            elif chars == 0:
+                info(f"    🔴 0 chars — CF Worker también bloqueado por Imperva")
+                modo_res["bloqueado"] = True
+            else:
+                info(f"    ⚠️  Sin bkt_init_widget — respuesta inesperada")
+                modo_res["inesperado"] = True
+
+            resultado["modos"][mode] = modo_res
+
+        except requests.exceptions.Timeout:
+            info(f"    ⏱️  Timeout (>40s)")
+            resultado["modos"][mode] = {"error": "timeout"}
+        except Exception as e:
+            info(f"    Error: {e}")
+            resultado["modos"][mode] = {"error": str(e)}
+
+        time.sleep(0.5)
+
+    return resultado
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Etapa 5: AVC + canales Telegram alternativos
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -599,8 +682,8 @@ def etapa_telegram_canales(tramites: list) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generar_reporte(ip_data: dict, resultados_get_post: list,
-                    resultados_bkt_directo: list, telegram_data: dict,
-                    tramites: list) -> str:
+                    resultados_bkt_directo: list, resultados_cf_worker: list,
+                    telegram_data: dict, tramites: list) -> str:
     """Genera reporte Markdown/HTML para enviar a Telegram."""
     lineas = ["<b>🔍 INSPECTOR OVC — DIAGNÓSTICO COMPLETO</b>\n"]
     ahora = datetime.now(timezone.utc) - timedelta(hours=4)
@@ -665,6 +748,34 @@ def generar_reporte(ip_data: dict, resultados_get_post: list,
             lineas.append(f"⚠️ [{t}] Directo: HTML inesperado — endpoint no existe o redirige")
         else:
             lineas.append(f"❓ [{t}] Directo: respuesta inesperada (pk={pk_short})")
+
+    # CF Worker
+    lineas.append("\n<b>═══ CAPA 0: CF WORKER RELAY ═══</b>")
+    if not resultados_cf_worker:
+        lineas.append("⚫ CF Worker no probado (--solo-directo activo)")
+    elif resultados_cf_worker and resultados_cf_worker[0].get("omitida"):
+        lineas.append("⚫ CF_WORKER_URL no configurada — deploy pendiente en dash.cloudflare.com")
+    else:
+        for r in resultados_cf_worker:
+            t = r.get("tramite", "?")
+            if r.get("error"):
+                lineas.append(f"❌ [{t}] {r['error']}")
+                continue
+            for mode, mr in r.get("modos", {}).items():
+                if mr.get("error"):
+                    lineas.append(f"🔴 [{t}] mode={mode}: {mr['error']}")
+                elif mr.get("disponible"):
+                    d = mr.get("data", {})
+                    lineas.append(f"🟢🟢 [{t}] mode={mode}: CITA DISPONIBLE — {d.get('dates',[])} {d.get('hours',[])}")
+                elif mr.get("has_bkt"):
+                    d = mr.get("data", {})
+                    lineas.append(f"🟡 [{t}] mode={mode}: bkt ok — agendas={d.get('agendas_count',0)} sin fechas")
+                elif mr.get("bloqueado"):
+                    lineas.append(f"🔴 [{t}] mode={mode}: 0 chars — Imperva bloquea también IPs CF")
+                elif mr.get("inesperado"):
+                    lineas.append(f"⚠️ [{t}] mode={mode}: respuesta inesperada ({mr.get('chars',0)} chars)")
+                else:
+                    lineas.append(f"❓ [{t}] mode={mode}: sin datos")
 
     lineas.append("\n<b>═══ CANALES TELEGRAM ═══</b>")
     for canal, data in telegram_data.items():
@@ -783,11 +894,16 @@ def main():
 
     resultados_get_post = []
     resultados_bkt_directo = []
+    resultados_cf_worker = []
 
     for tramite in tramites_con_url:
         url = urls[tramite]
 
-        # Etapa 4: Bookitit directo (siempre — es la prueba clave)
+        # Etapa CF Worker (Capa 0 — probar primero, es la solución principal)
+        r_cf = etapa_cf_worker(tramite, url)
+        resultados_cf_worker.append(r_cf)
+
+        # Etapa 4: Bookitit directo
         r_directo = etapa_bookitit_directo(tramite, url)
         r_directo["tramite"] = tramite
         resultados_bkt_directo.append(r_directo)
@@ -811,7 +927,7 @@ def main():
 
     reporte = generar_reporte(
         ip_data, resultados_get_post, resultados_bkt_directo,
-        telegram_data, tramites_con_url
+        resultados_cf_worker, telegram_data, tramites_con_url
     )
     info(reporte.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", ""))
 
@@ -827,6 +943,10 @@ def main():
         any(
             any(x.get("disponible") for x in r.get("resultados", []))
             for r in resultados_bkt_directo
+        ) or
+        any(
+            any(m.get("disponible") for m in r.get("modos", {}).values())
+            for r in resultados_cf_worker
         )
     )
     sys.exit(0 if hay_disponible else 1)

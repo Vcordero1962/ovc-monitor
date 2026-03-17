@@ -134,6 +134,12 @@ jobs:
           # Proxy residencial — mantenido para uso futuro / diagnóstico
           # Webshare Static Residential: http://user:pass@IP:PORT
           HTTP_PROXY_URL:           ${{ secrets.HTTP_PROXY_URL }}
+          # ── Cloudflare Worker relay (Capa 0) ──────────────────────────────
+          # Deploy: dash.cloudflare.com → Workers → ovc-relay
+          # IPs CF edge (104.x.x.x) — menos bloqueadas por Imperva que GitHub Actions
+          CF_WORKER_URL:            ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET:         ${{ secrets.CF_WORKER_SECRET }}
+          CF_WORKER_ENABLED:        ${{ secrets.CF_WORKER_ENABLED }}
         run: python ovc_once.py
 
       - name: Desconectar VPN

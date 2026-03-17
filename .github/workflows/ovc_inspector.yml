@@ -52,6 +52,10 @@ jobs:
           URL_NOTARIAL:       ${{ secrets.URL_NOTARIAL }}
           URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
           AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+          # Cloudflare Worker — para probar Capa 0 desde el Inspector
+          CF_WORKER_URL:      ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET:   ${{ secrets.CF_WORKER_SECRET }}
+          CF_WORKER_ENABLED:  ${{ secrets.CF_WORKER_ENABLED }}
         run: |
           ARGS="${{ github.event.inputs.tramites }}"
           if [ "${{ github.event.inputs.no_avc }}" = "true" ]; then ARGS="$ARGS --no-avc"; fi

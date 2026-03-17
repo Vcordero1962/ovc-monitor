@@ -70,4 +70,8 @@ jobs:
           MAX_MIN:            ${{ github.event.inputs.max_min || '35' }}
           POLL_INTERVAL:      ${{ github.event.inputs.poll_interval || '45' }}
           POLL_JITTER:        '10'
+          # Cloudflare Worker relay (Capa 0 — bypass Imperva datacenter block)
+          CF_WORKER_URL:      ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET:   ${{ secrets.CF_WORKER_SECRET }}
+          CF_WORKER_ENABLED:  ${{ secrets.CF_WORKER_ENABLED }}
         run: python ovc_burst.py
