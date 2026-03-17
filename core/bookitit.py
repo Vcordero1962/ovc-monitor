@@ -3,19 +3,23 @@
 """
 bookitit.py — Verificación de disponibilidad via Bookitit API.
 
-Ingeniería inversa confirmó que el flujo GET/POST a citaconsular.es
-es un "soft block" de Imperva: el token POST es aceptado sintácticamente
-pero Imperva devuelve bkt_init_widget({}) VACÍO fabricado para engañar bots.
+Inspector Mar 17 confirmó:
+  - citaconsular.es/onlinebookings/main/ → soft block Imperva (bkt_init_widget({}) falso)
+  - app.bookitit.com/onlinebookings/main/ → HTTP 200 cuerpo VACÍO (0 chars) — también Imperva
+  - app.bookitit.com/es/hosteds/widgetdefault/{PK}/ → 1317 chars (gate Imperva con token)
 
-NUEVO ENFOQUE (Capa 1 → Capa 2):
-  Capa 1 — DIRECTO a app.bookitit.com (sin Imperva):
-    GET app.bookitit.com/onlinebookings/main/?pk={PK}&callback=bkt_init_widget
-    El PK se extrae del path de la URL configurada (/widgetdefault/{PK}/).
-    app.bookitit.com NO tiene Imperva (es el SaaS origin, no el CDN del cliente).
+ESTRATEGIA ACTUAL (3 capas, en orden):
+  Capa 1 — GET/POST app.bookitit.com + JSONP con session cookie:
+    El SaaS origin de Bookitit también tiene Imperva, pero su token POST puede
+    ser menos "soft-blocked" que citaconsular.es. Después del POST obtenemos
+    una sesión con cookie, con la que llamamos el JSONP (que antes daba 0 chars).
 
-  Capa 2 — GET/POST citaconsular.es (fallback diagnóstico):
-    Si Capa 1 falla completamente (timeout, 404, etc.), intentamos el flujo
-    GET→POST legacy. Útil para diagnóstico aunque los datos serán vacíos.
+  Capa 2 — GET JSONP directo app.bookitit.com (sin sesión):
+    Variante simple — puede funcionar si Imperva de app.bookitit.com es más
+    permisiva que la de citaconsular.es para requests no-browser.
+
+  Capa 3 — GET/POST citaconsular.es (fallback diagnóstico):
+    El flujo original — soft block esperado, útil solo para diagnóstico.
 
 Función pública:
   check_all(tramites: list) → list[(tramite, nombre, url, info_dict)]
@@ -123,7 +127,133 @@ def _jsonp_headers(ua: str) -> dict:
     }
 
 
-# ── Capa 1: Bookitit directo (sin Imperva) ─────────────────────────────────────
+# ── Capa 1: GET/POST app.bookitit.com + JSONP con session cookie ───────────────
+
+def _check_app_bookitit_con_sesion(pk: str, sid: str, ua: str) -> tuple:
+    """
+    Capa 1 — Flujo completo en app.bookitit.com:
+      GET  widget → extrae token Imperva del gate HTML
+      POST token  → establece sesión/cookie con el SaaS origin
+      GET  JSONP  → llama onlinebookings/main/ con esa sesión
+
+    La hipótesis: el gate de app.bookitit.com puede tener configuración
+    Imperva más permisiva que citaconsular.es (SaaS origin vs cliente).
+    Con la cookie de sesión POST, el JSONP que antes daba 0 chars
+    podría responder con datos reales.
+
+    Retorna (disponible: bool, data: dict, exito: bool).
+      exito=True  → endpoint JSONP respondió con bkt_init_widget
+      exito=False → gate POST falló o JSONP sigue en 0 chars
+    """
+    if not pk:
+        return False, {}, False
+
+    widget_url = f"https://app.bookitit.com/es/hosteds/widgetdefault/{pk}/{sid or ''}"
+    session = requests.Session()
+    ts = int(time.time() * 1000)
+
+    # ── GET widget → token ──────────────────────────────────────────────────────
+    try:
+        r_get = session.get(widget_url, headers=_base_headers(ua), timeout=20, allow_redirects=True)
+        html = r_get.text
+        info(f"BKT-APP GET: {r_get.status_code} — {len(html)} chars")
+
+        m = re.search(r'name=["\']token["\'][^>]*value=["\']([^"\']+)["\']', html)
+        if not m:
+            m = re.search(r'value=["\']([^"\']+)["\'][^>]*name=["\']token["\']', html)
+
+        if not m:
+            info("BKT-APP: sin token Imperva en GET — app.bookitit.com gate diferente")
+            return False, {}, False
+
+        raw_token = m.group(1)
+        info(f"BKT-APP: token {raw_token[:20]}... ({len(raw_token)} chars)")
+    except Exception as e:
+        warn(f"BKT-APP GET error: {e}")
+        return False, {}, False
+
+    # ── POST token → establecer sesión ─────────────────────────────────────────
+    try:
+        _human_sleep(0.5, 1.5)
+        post_hdrs = dict(_base_headers(ua))
+        post_hdrs.update({
+            "Content-Type":   "application/x-www-form-urlencoded",
+            "Referer":        widget_url,
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "navigate",
+        })
+        r_post = session.post(
+            widget_url, data={"token": raw_token},
+            headers=post_hdrs, timeout=20, allow_redirects=True,
+        )
+        post_text = r_post.text
+        info(f"BKT-APP POST: {r_post.status_code} — {len(post_text)} chars")
+        info(f"BKT-APP POST preview: {post_text[:400].replace(chr(10), ' | ')}")
+
+        # Comprobar si el POST ya contiene bkt_init_widget (caso ideal)
+        if "bkt_init_widget" in post_text:
+            bkt_pos = post_text.find("bkt_init_widget")
+            data = _parse_bkt_widget(post_text[bkt_pos: bkt_pos + 8000])
+            info(f"BKT-APP POST contiene bkt_init_widget: agendas={data['agendas_count']} dates={data['dates_count']}")
+            if data["dates_count"] > 0 or data["hours_count"] > 0:
+                return True, data, True
+            if data["agendas_count"] > 0 or data["id_centro"]:
+                return False, data, True
+    except Exception as e:
+        warn(f"BKT-APP POST error: {e}")
+        return False, {}, False
+
+    # ── GET JSONP con sesión activa ─────────────────────────────────────────────
+    # Ahora la sesión tiene la cookie post-POST. El JSONP que antes daba
+    # 0 chars puede responder con datos reales al tener autenticación.
+    for param_name in ["pk", "publickey"]:
+        params = {
+            "callback": "bkt_init_widget",
+            param_name: pk,
+            "lang":     "es",
+            "version":  "5",
+            "_":        ts,
+        }
+        if sid:
+            params["services[]"] = sid
+
+        try:
+            r_jsonp = session.get(
+                "https://app.bookitit.com/onlinebookings/main/",
+                params=params,
+                headers=_jsonp_headers(ua),
+                timeout=15,
+                allow_redirects=True,
+            )
+            text = r_jsonp.text
+            info(f"BKT-APP JSONP [{param_name}=]: {r_jsonp.status_code} — {len(text)} chars")
+            if text:
+                info(f"BKT-APP JSONP preview: {text[:300].replace(chr(10), ' | ')}")
+
+            if "bkt_init_widget" in text:
+                bkt_pos = text.find("bkt_init_widget")
+                bkt_block = text[bkt_pos: bkt_pos + 8000]
+                data = _parse_bkt_widget(bkt_block)
+                info(f"BKT-APP JSONP: agendas={data['agendas_count']} dates={data['dates_count']} hours={data['hours_count']}")
+                if data["dates_count"] > 0 or data["hours_count"] > 0:
+                    info("BKT-APP: *** DISPONIBILIDAD DETECTADA ***")
+                    return True, data, True
+                if data["agendas_count"] > 0 or data["id_centro"]:
+                    info("BKT-APP: agendas presentes pero sin fechas — sin citas")
+                    return False, data, True
+                # bkt completamente vacío — puede ser soft block igual que citaconsular.es
+                info("BKT-APP: bkt_init_widget vacío — probando siguiente variante")
+            elif len(text) == 0:
+                info("BKT-APP JSONP: 0 chars — sesión POST no desbloqueó el JSONP")
+            else:
+                info(f"BKT-APP JSONP: respuesta sin bkt_init_widget ({len(text)} chars)")
+        except Exception as e:
+            warn(f"BKT-APP JSONP [{param_name}=] error: {e}")
+
+    return False, {}, False
+
+
+# ── Capa 2: Bookitit JSONP directo (sin sesión) ────────────────────────────────
 
 def _check_directo(pk: str, sid: str, ua: str) -> tuple:
     """
@@ -337,28 +467,38 @@ def check_url(widget_url: str) -> tuple:
     ua      = random.choice(USER_AGENTS)
     session = requests.Session()
 
-    # ── Capa 1: Bookitit directo ───────────────────────────────────────────────
     pk, sid = _extract_pk_sid(widget_url)
+
+    # ── Capa 1: GET/POST app.bookitit.com + JSONP con sesión ──────────────────
     if pk:
-        info(f"BKT-DIRECTO: intentando app.bookitit.com (pk={pk[:12]}... sid={sid or 'N/A'})")
+        info(f"BKT-APP: intentando GET/POST app.bookitit.com (pk={pk[:12]}... sid={sid or 'N/A'})")
+        try:
+            disponible, data, exito = _check_app_bookitit_con_sesion(pk, sid, ua)
+            if exito:
+                return disponible, data
+            warn("BKT-APP: sin JSONP válido — pasando a Capa 2")
+        except Exception as e:
+            warn(f"BKT-APP excepción: {e} — pasando a Capa 2")
+    else:
+        warn("BKT: no se pudo extraer PK del URL — omitiendo Capas 1 y 2")
+
+    # ── Capa 2: JSONP directo app.bookitit.com (sin sesión) ───────────────────
+    if pk:
+        info("BKT-DIRECTO: intentando JSONP directo sin sesión (app.bookitit.com)")
         try:
             disponible, data, exito = _check_directo(pk, sid, ua)
             if exito:
-                # El endpoint respondió — resultado confiable
                 return disponible, data
-            else:
-                warn("BKT-DIRECTO: endpoint no respondió con JSONP válido — fallback a Capa 2")
+            warn("BKT-DIRECTO: sin JSONP válido — pasando a Capa 3")
         except Exception as e:
-            warn(f"BKT-DIRECTO excepción: {e} — fallback a Capa 2")
-    else:
-        warn(f"BKT: no se pudo extraer PK del URL — omitiendo Capa 1")
+            warn(f"BKT-DIRECTO excepción: {e} — pasando a Capa 3")
 
-    # ── Capa 2: GET/POST citaconsular.es (fallback) ────────────────────────────
-    info("BKT-FALLBACK: intentando GET/POST citaconsular.es (Imperva soft-block esperado)")
+    # ── Capa 3: GET/POST citaconsular.es (fallback diagnóstico) ───────────────
+    info("BKT-CITA: intentando GET/POST citaconsular.es (soft-block Imperva esperado)")
     try:
         return _check_get_post(widget_url, ua, session)
     except Exception as e:
-        error(f"BKT error inesperado en Capa 2: {e}", exc=e)
+        error(f"BKT error inesperado en Capa 3: {e}", exc=e)
         return False, {}
 
 
