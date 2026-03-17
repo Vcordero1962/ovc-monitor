@@ -18,9 +18,14 @@
 
 // PKs conocidos de citaconsular.es (La Habana) — actualizar si cambian
 // Los PKs se encuentran en las URLs configuradas: /widgetdefault/{PK}/{SID}
+// PKs confirmados por Inspector OVC — Mar 17/2026
 const ALLOWED_PKS = new Set([
-  // Añadir aquí los PKs de cada servicio cuando los conozcas
-  // Ejemplo: "28db94e270580be60f6e00285a7d8141f"
+  "25b6cfa9f112ae4ca19457abc237f7ba",   // LEGA  (Legalización)
+  "28330379fc95acafd31ee9e8938c278ff",  // LMD   (Legalización Matrimonio/Defunción)
+  "22091b5b8d43b89fb226cabb272a844f9",  // PASAPORTE
+  "28db94e270580be60f6e00285a7d8141f",  // VISADO
+  "2096463e6aff35e340c87439bc59e410c",  // MATRIMONIO
+  "2f21cd9c0d8aa26725bf8930e4691d645",  // NACIMIENTO + NOTARIAL (mismo PK, SID diferente)
 ]);
 
 // Secret para proteger el worker (evita abuso del free tier)
@@ -38,6 +43,7 @@ export default {
     const lang    = url.searchParams.get("lang")    || "es";
     const secret  = url.searchParams.get("secret")  || "";
     const target  = url.searchParams.get("target")  || "bookitit";  // "bookitit" | "citaconsular"
+    const mode    = url.searchParams.get("mode")    || "jsonp";     // "jsonp" (simple) | "full" (GET→POST→JSONP)
 
     // Validación de secret
     if (REQUIRE_SECRET && env.OVC_SECRET && secret !== env.OVC_SECRET) {
@@ -51,6 +57,14 @@ export default {
     if (!pk || !/^[a-zA-Z0-9]{10,64}$/.test(pk)) {
       return new Response(JSON.stringify({error: "pk requerido (10-64 chars alfanuméricos)"}), {
         status: 400,
+        headers: {"Content-Type": "application/json"},
+      });
+    }
+
+    // Whitelist de PKs conocidos (evita usar el Worker como proxy genérico)
+    if (ALLOWED_PKS.size > 0 && !ALLOWED_PKS.has(pk)) {
+      return new Response(JSON.stringify({error: "PK no autorizado"}), {
+        status: 403,
         headers: {"Content-Type": "application/json"},
       });
     }
@@ -86,7 +100,98 @@ export default {
 
     console.log(`OVC Worker: target=${target} pk=${pk.slice(0,12)}... url=${targetUrl.slice(0,80)}`);
 
-    // ── Fetch desde el edge de Cloudflare ──────────────────────────────────────
+    // ── Modo full: GET→POST→JSONP (con cookie de sesión Imperva) ──────────────
+    if (mode === "full") {
+      try {
+        const widgetUrl = target === "citaconsular"
+          ? `https://www.citaconsular.es/es/hosteds/widgetdefault/${pk}/${sid}`
+          : `https://app.bookitit.com/es/hosteds/widgetdefault/${pk}/${sid}`;
+
+        const baseHdrs = {
+          "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept":          "text/html,application/xhtml+xml,*/*;q=0.9",
+          "Accept-Language": "es-ES,es;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Connection":      "keep-alive",
+          "Upgrade-Insecure-Requests": "1",
+        };
+
+        // Paso 1: GET widget → capturar cookies + token
+        const r1 = await fetch(widgetUrl, { method: "GET", headers: baseHdrs, redirect: "follow" });
+        const html1 = await r1.text();
+        const cookies1 = r1.headers.get("set-cookie") || "";
+        console.log(`CF Worker GET: ${r1.status} — ${html1.length} chars — cookies: ${cookies1.slice(0,60)}`);
+
+        const tokenMatch = html1.match(/name=["']token["'][^>]*value=["']([^"']+)["']/)
+                        || html1.match(/value=["']([^"']+)["'][^>]*name=["']token["']/);
+        if (!tokenMatch) {
+          return new Response(JSON.stringify({error: "sin token Imperva en GET", chars: html1.length, preview: html1.slice(0,200)}),
+            { status: 200, headers: {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"} });
+        }
+
+        // Paso 2: POST token → establecer sesión Imperva
+        const cookieHdr = cookies1 ? cookies1.split(",").map(c => c.split(";")[0]).join("; ") : "";
+        const r2 = await fetch(widgetUrl, {
+          method: "POST",
+          headers: { ...baseHdrs,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": widgetUrl,
+            "Cookie": cookieHdr,
+          },
+          body: `token=${encodeURIComponent(tokenMatch[1])}`,
+          redirect: "follow",
+        });
+        const html2 = await r2.text();
+        const cookies2 = r2.headers.get("set-cookie") || "";
+        const allCookies = [cookieHdr, cookies2.split(",").map(c => c.split(";")[0]).join("; ")]
+          .filter(Boolean).join("; ");
+        console.log(`CF Worker POST: ${r2.status} — ${html2.length} chars — cookies: ${allCookies.slice(0,80)}`);
+
+        // Paso 3: GET JSONP con cookie de sesión
+        const jsonpParams = new URLSearchParams({
+          callback: "bkt_init_widget", publickey: pk,
+          lang, type: "default", version: "5", _: Date.now(),
+        });
+        if (sid) jsonpParams.set("services[]", sid);
+
+        const jsonpBase = target === "citaconsular"
+          ? "https://www.citaconsular.es/onlinebookings/main/"
+          : "https://app.bookitit.com/onlinebookings/main/";
+
+        const r3 = await fetch(`${jsonpBase}?${jsonpParams}`, {
+          method: "GET",
+          headers: { ...baseHdrs,
+            "Accept": "*/*",
+            "Referer": widgetUrl,
+            "Cookie": allCookies,
+            "Sec-Fetch-Dest": "script",
+            "Sec-Fetch-Mode": "no-cors",
+            "Sec-Fetch-Site": "same-origin",
+          },
+        });
+        const text3 = await r3.text();
+        const hasBkt = text3.includes("bkt_init_widget");
+        console.log(`CF Worker JSONP: ${r3.status} — ${text3.length} chars — bkt=${hasBkt}`);
+
+        return new Response(text3, {
+          status: r3.status,
+          headers: {
+            "Content-Type": "application/javascript",
+            "Access-Control-Allow-Origin": "*",
+            "X-OVC-Mode": "full",
+            "X-OVC-Chars": text3.length,
+            "X-OVC-Has-Bkt": hasBkt ? "1" : "0",
+            "Cache-Control": "no-cache, no-store",
+          },
+        });
+      } catch (err) {
+        console.error(`CF Worker full mode error: ${err.message}`);
+        return new Response(JSON.stringify({ error: err.message, mode: "full" }),
+          { status: 502, headers: {"Content-Type": "application/json"} });
+      }
+    }
+
+    // ── Modo simple: GET JSONP directo desde CF edge ────────────────────────────
     try {
       const resp = await fetch(targetUrl, {
         method: "GET",
@@ -104,7 +209,6 @@ export default {
           "Sec-Fetch-Mode":  "no-cors",
           "Sec-Fetch-Site":  "same-origin",
         },
-        // Workers tienen 30s timeout por defecto
       });
 
       const text = await resp.text();
@@ -113,13 +217,13 @@ export default {
 
       console.log(`OVC Worker: HTTP ${resp.status} — ${chars} chars — bkt=${hasBkt}`);
 
-      // Retornar la respuesta JSONP directamente
       return new Response(text, {
         status: resp.status,
         headers: {
           "Content-Type":                "application/javascript",
           "Access-Control-Allow-Origin": "*",
           "X-OVC-Target":                target,
+          "X-OVC-Mode":                  "jsonp",
           "X-OVC-Chars":                 chars,
           "X-OVC-Has-Bkt":               hasBkt ? "1" : "0",
           "Cache-Control":               "no-cache, no-store",

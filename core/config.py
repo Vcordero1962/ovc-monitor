@@ -28,6 +28,9 @@ BOOKITIT_POST_ENABLED    = os.getenv("BOOKITIT_POST_ENABLED",    "1") == "1"
 STATUS_CADA_RUN          = os.getenv("STATUS_CADA_RUN",          "1") == "1"
 AVC_TRAMITE              = os.getenv("AVC_TRAMITE", "ALL").upper()
 HTTP_PROXY_URL           = os.getenv("HTTP_PROXY_URL", "")
+CF_WORKER_URL            = os.getenv("CF_WORKER_URL", "")      # https://ovc-relay.USUARIO.workers.dev
+CF_WORKER_SECRET         = os.getenv("CF_WORKER_SECRET", "")   # valor de OVC_SECRET en CF dashboard
+CF_WORKER_ENABLED        = os.getenv("CF_WORKER_ENABLED", "1") == "1"
 
 # ── Perfil persistente de Chromium (anti-WAF) ──────────────────────────────────
 _DEFAULT_PROFILE = Path.home() / ".config" / "chromium-ovc"

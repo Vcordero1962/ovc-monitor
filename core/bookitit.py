@@ -8,18 +8,23 @@ Inspector Mar 17 confirmó:
   - app.bookitit.com/onlinebookings/main/ → HTTP 200 cuerpo VACÍO (0 chars) — también Imperva
   - app.bookitit.com/es/hosteds/widgetdefault/{PK}/ → 1317 chars (gate Imperva con token)
 
-ESTRATEGIA ACTUAL (3 capas, en orden):
+ESTRATEGIA ACTUAL (4 capas, en orden):
+  Capa 0 — Cloudflare Worker relay (IPs CF edge 104.x.x.x):
+    CF_WORKER_URL + CF_WORKER_SECRET — Worker propio en dash.cloudflare.com.
+    Corre en IPs de Cloudflare, fuera de la lista negra de datacenter de Imperva.
+    mode=full: Worker hace GET→POST→JSONP internamente (con cookie sesión Imperva).
+    mode=jsonp: JSONP directo sin cookies (rápido, fallback si full falla).
+    Requiere deploy manual — ver cloudflare_worker/worker.js.
+
   Capa 1 — GET/POST app.bookitit.com + JSONP con session cookie:
-    El SaaS origin de Bookitit también tiene Imperva, pero su token POST puede
-    ser menos "soft-blocked" que citaconsular.es. Después del POST obtenemos
-    una sesión con cookie, con la que llamamos el JSONP (que antes daba 0 chars).
+    El SaaS origin de Bookitit también tiene Imperva. Fallback si CF Worker
+    no está configurado o falla.
 
   Capa 2 — GET JSONP directo app.bookitit.com (sin sesión):
-    Variante simple — puede funcionar si Imperva de app.bookitit.com es más
-    permisiva que la de citaconsular.es para requests no-browser.
+    Variante simple sin cookies.
 
   Capa 3 — GET/POST citaconsular.es (fallback diagnóstico):
-    El flujo original — soft block esperado, útil solo para diagnóstico.
+    El flujo original — soft block esperado.
 
 Función pública:
   check_all(tramites: list) → list[(tramite, nombre, url, info_dict)]
@@ -30,7 +35,7 @@ import random
 import time
 import requests
 
-from core.config import SERVICIOS, USER_AGENTS, get_url_for_tramite
+from core.config import SERVICIOS, USER_AGENTS, get_url_for_tramite, CF_WORKER_URL, CF_WORKER_SECRET, CF_WORKER_ENABLED
 from core.logger import info, warn, error
 from core.security import validate_widget_url, validate_imperva_token, SecurityError
 
@@ -125,6 +130,74 @@ def _jsonp_headers(ua: str) -> dict:
         "Sec-Fetch-Site":  "same-origin",
         "Connection":      "keep-alive",
     }
+
+
+# ── Capa 0: Cloudflare Worker relay (IPs de CF edge — no datacenter) ──────────
+
+def _check_cf_worker(pk: str, sid: str, ua: str, mode: str = "full") -> tuple:
+    """
+    Capa 0 — Llama al CF Worker propio como intermediario.
+
+    El Worker corre en IPs de Cloudflare (104.x.x.x) que Imperva/Bookitit
+    trata diferente a IPs de GitHub Actions/datacenter.
+
+    mode="jsonp" → JSONP directo desde CF (rápido, puede no tener cookies)
+    mode="full"  → Worker hace GET→POST→JSONP internamente (con cookie Imperva)
+
+    Retorna (disponible: bool, data: dict, exito: bool).
+    """
+    if not CF_WORKER_ENABLED or not CF_WORKER_URL:
+        return False, {}, False
+    if not pk:
+        return False, {}, False
+
+    params = {"pk": pk, "mode": mode}
+    if sid:
+        params["sid"] = sid
+    if CF_WORKER_SECRET:
+        params["secret"] = CF_WORKER_SECRET
+
+    try:
+        r = requests.get(
+            CF_WORKER_URL,
+            params=params,
+            headers={"User-Agent": ua, "Accept": "*/*"},
+            timeout=35,   # mode=full necesita más tiempo (3 requests encadenados)
+        )
+        text = r.text
+        chars = len(text)
+        has_bkt = "bkt_init_widget" in text
+        info(f"CF-WORKER [{mode}]: HTTP {r.status_code} — {chars} chars — bkt={has_bkt}")
+
+        if r.status_code in (401, 403):
+            warn(f"CF-WORKER: acceso denegado ({r.status_code}) — verificar CF_WORKER_SECRET")
+            return False, {}, False
+
+        if not has_bkt:
+            if chars > 0:
+                info(f"CF-WORKER preview: {text[:200].replace(chr(10), ' | ')}")
+            warn(f"CF-WORKER: sin bkt_init_widget — {chars} chars")
+            return False, {}, False
+
+        bkt_pos = text.find("bkt_init_widget")
+        data = _parse_bkt_widget(text[bkt_pos: bkt_pos + 10000])
+        info(f"CF-WORKER: agendas={data['agendas_count']} dates={data['dates_count']} hours={data['hours_count']} raw={data['dates_raw']}")
+
+        if data["dates_count"] > 0 or data["hours_count"] > 0:
+            info("CF-WORKER: *** DISPONIBILIDAD DETECTADA ***")
+            return True, data, True
+        if data["agendas_count"] > 0 or data["id_centro"]:
+            info("CF-WORKER: agendas reales — sin citas disponibles")
+            return False, data, True
+        info("CF-WORKER: bkt_init_widget vacío — Worker también bloqueado por Imperva")
+        return False, {}, False
+
+    except requests.exceptions.Timeout:
+        warn(f"CF-WORKER [{mode}]: timeout (>{35}s)")
+        return False, {}, False
+    except Exception as e:
+        warn(f"CF-WORKER error: {e}")
+        return False, {}, False
 
 
 # ── Capa 1: GET/POST app.bookitit.com + JSONP con session cookie ───────────────
@@ -536,6 +609,24 @@ def check_url(widget_url: str) -> tuple:
     session = requests.Session()
 
     pk, sid = _extract_pk_sid(widget_url)
+
+    # ── Capa 0: Cloudflare Worker relay ───────────────────────────────────────
+    if pk and CF_WORKER_ENABLED and CF_WORKER_URL:
+        info(f"CF-WORKER: intentando relay via Cloudflare edge (pk={pk[:12]}... sid={sid or 'N/A'})")
+        try:
+            # Primero mode=full (GET→POST→JSONP interno en el Worker)
+            disponible, data, exito = _check_cf_worker(pk, sid, ua, mode="full")
+            if exito:
+                return disponible, data
+            # Si full falló, probar mode=jsonp (más rápido, sin cookies)
+            disponible, data, exito = _check_cf_worker(pk, sid, ua, mode="jsonp")
+            if exito:
+                return disponible, data
+            warn("CF-WORKER: sin respuesta válida en ambos modos — pasando a Capa 1")
+        except Exception as e:
+            warn(f"CF-WORKER excepción: {e} — pasando a Capa 1")
+    elif CF_WORKER_ENABLED and not CF_WORKER_URL:
+        info("CF-WORKER: CF_WORKER_URL no configurada — omitiendo Capa 0 (ver DEPLOY.md)")
 
     # ── Capa 1: GET/POST app.bookitit.com + JSONP con sesión ──────────────────
     if pk:
