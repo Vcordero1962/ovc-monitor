@@ -164,13 +164,20 @@ def check_url(widget_url: str) -> tuple:
         post_text = r_post.text
         info(f"BKT POST: {r_post.status_code} — {len(post_text)} chars")
 
+        # Debug: primeros 800 chars del POST response (clave para diagnosticar)
+        info(f"BKT POST preview: {post_text[:800].replace(chr(10), ' | ')}")
+
         # Paso 4 — Parsear bkt_init_widget
         bkt_pos = post_text.find("bkt_init_widget")
         if bkt_pos < 0:
             warn("BKT: bkt_init_widget NO encontrado en POST response (Imperva bloqueó?)")
             return False, {}
 
-        data = _parse_bkt_widget(post_text[bkt_pos: bkt_pos + 8000])
+        bkt_block = post_text[bkt_pos: bkt_pos + 8000]
+        # Debug: primeros 600 chars del bloque bkt_init_widget
+        info(f"BKT widget block: {bkt_block[:600].replace(chr(10), ' | ')}")
+
+        data = _parse_bkt_widget(bkt_block)
         info(
             f"BKT: agendas={data['agendas_count']} "
             f"dates={data['dates_count']} "

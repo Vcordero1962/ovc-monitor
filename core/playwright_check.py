@@ -265,38 +265,8 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
-                # Interceptar JSONP de Bookitit y redirigir a app.bookitit.com
-                # El widget llama citaconsular.es/onlinebookings/main/ que tiene Imperva.
-                # Reescribimos la URL a app.bookitit.com (mismo endpoint, sin WAF).
+                # placeholder — sin interceptor activo (bookitit.com/onlinebookings no existe)
                 bkt_responses: list = []
-
-                def _route_jsonp(route):
-                    orig_url = route.request.url
-                    # Reescribir dominio: citaconsular.es → app.bookitit.com (sin Imperva)
-                    bkt_url = orig_url.replace(
-                        "www.citaconsular.es", "app.bookitit.com"
-                    ).replace("citaconsular.es", "app.bookitit.com")
-                    try:
-                        # route.fetch(url=...) — override nativo de Playwright, no bloquea event loop
-                        resp = route.fetch(
-                            url=bkt_url,
-                            headers={
-                                "User-Agent":      ua,
-                                "Accept":          "*/*",
-                                "Referer":         "https://app.bookitit.com/",
-                                "Accept-Language": "es-ES,es;q=0.9",
-                            },
-                        )
-                        body = resp.text()
-                        info(f"JSONP→BKT: {len(body)} chars — {bkt_url[:70]}")
-                        if body and len(body) > 20:
-                            bkt_responses.append(body)
-                        route.fulfill(response=resp)
-                    except Exception as re_e:
-                        info(f"JSONP rewrite error ({re_e}) — continuando original")
-                        route.continue_()
-
-                ctx.route("**/onlinebookings/main/**", _route_jsonp)
 
                 # Navegar al widget directo en Bookitit (bypass Imperva de citaconsular.es)
                 page.goto(bkt_direct_url, timeout=to_widget, wait_until="networkidle")

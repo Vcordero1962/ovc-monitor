@@ -1,0 +1,59 @@
+name: OVC Inspector — Diagnóstico de cuellos de botella
+
+# Ejecutar manualmente para diagnosticar por qué el bot no detecta citas
+# El inspector prueba TODAS las capas y envía reporte completo a Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      tramites:
+        description: 'Tramites a inspeccionar (ej: LMD NACIMIENTO) o vacío para todos'
+        required: false
+        default: ''
+      no_avc:
+        description: 'Omitir canales Telegram (más rápido)'
+        required: false
+        type: boolean
+        default: false
+      solo_directo:
+        description: 'Solo probar Bookitit directo (mucho más rápido)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  inspector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install requests python-dotenv
+
+      - name: Ejecutar Inspector OVC
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADMIN_CHAT_ID:      ${{ secrets.ADMIN_CHAT_ID }}
+          URL_LEGA:           ${{ secrets.URL_LEGA }}
+          URL_LMD:            ${{ secrets.URL_LMD }}
+          URL_PASAPORTE:      ${{ secrets.URL_PASAPORTE }}
+          URL_VISADO:         ${{ secrets.URL_VISADO }}
+          URL_MATRIMONIO:     ${{ secrets.URL_MATRIMONIO }}
+          URL_NACIMIENTO:     ${{ secrets.URL_NACIMIENTO }}
+          URL_NOTARIAL:       ${{ secrets.URL_NOTARIAL }}
+          URL_SISTEMA:        ${{ secrets.URL_SISTEMA }}
+          AVC_TRAMITE:        ${{ secrets.AVC_TRAMITE }}
+        run: |
+          ARGS="${{ github.event.inputs.tramites }}"
+          if [ "${{ github.event.inputs.no_avc }}" = "true" ]; then ARGS="$ARGS --no-avc"; fi
+          if [ "${{ github.event.inputs.solo_directo }}" = "true" ]; then ARGS="$ARGS --solo-directo"; fi
+          python ovc_inspector.py $ARGS
