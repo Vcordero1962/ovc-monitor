@@ -17,6 +17,11 @@ por GitHub Actions (ovc_bot.yml) o como proceso local.
 import os
 import sys
 import asyncio
+
+# Asegurar que la raíz del proyecto esté en el path (necesario en Windows)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters
