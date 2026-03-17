@@ -172,11 +172,18 @@ git diff --staged | grep -i "token\|password\|secret\|api_key"
 
 | Archivo | Función | Frecuencia |
 |---------|---------|------------|
-| `ovc_once.py` | Check principal AVC + sitio | Cada ~7 min via GH Actions |
-| `ovc_heartbeat.py` | "Estoy vivo" a Telegram | Cada 4h (0,4,8,12,16,20 Miami) |
-| `.github/workflows/ovc_monitor.yml` | Cron del bot | `0,7,13,19,26,32,38,44,51,57 * * * *` |
-| `.github/workflows/ovc_heartbeat.yml` | Cron heartbeat | `0 4,8,12,16,20,0 * * *` |
+| `ovc_once.py` | Check principal — 2 capas: Playwright (opt) + Bookitit POST | Cada ~7 min via GH Actions |
+| `ovc_burst.py` | Burst mode ventanas críticas — loop 35min × 45s | 2x/día: 11:55 y 21:55 UTC |
+| `ovc_heartbeat.py` | "Estoy vivo" — edita mensaje PINNEADO | Cada 4h (UTC 3,9,15,21) |
+| `bot/ovc_bot.py` | Bot gestor suscriptores — polling continuo | Permanente, timeout 350min GH Actions |
+| `.github/workflows/ovc_monitor.yml` | Cron monitor | `0,7,13,19,26,32,38,44,51,57 * * * *` |
+| `.github/workflows/ovc_burst.yml` | Cron burst | `55 11,21 * * *` |
+| `.github/workflows/ovc_heartbeat.yml` | Cron heartbeat | `0 3,9,15,21 * * *` |
+| `.github/workflows/ovc_bot.yml` | Bot gestor 24/7 | trigger push + manual, timeout 350min |
 | `ovc_sentinel/sentinel.py` | Vigilancia local 24/7 | Loop cada 30 min |
+
+> ⛔ **AVC canal ELIMINADO DEFINITIVAMENTE** — compite con el mercado objetivo de OVC.
+> NO reintroducir bajo ninguna circunstancia sin autorización explícita del propietario.
 
 ### 4.2 Anti-detección — NO revertir estos fixes
 
@@ -372,7 +379,18 @@ docker-compose up -d                # reiniciar
 
 ---
 
-**Versión:** 1.0
+**Versión:** 2.0
 **Activado:** 15 Marzo 2026
-**Compliance Streak:** 🟢 1 (inicio)
+**Actualizado:** 16 Marzo 2026
+**Compliance Streak:** 🟢 2 sesiones
 **Próxima revisión:** Cuando haya cambio arquitectónico significativo
+
+---
+
+## 11. 🚫 REGLA PERMANENTE — CANAL AVC
+
+> [!CRITICAL]
+> **NUNCA reintroducir dependencia del canal AVC (t.me/AsesorVirtualC) bajo ninguna forma.**
+> Este canal pertenece a un competidor directo del mercado objetivo de OVC.
+> Decisión tomada el 16 Marzo 2026 por el propietario del proyecto.
+> Aplica a: ovc_once.py, ovc_burst.py, ovc_monitor.py, cualquier archivo nuevo.
