@@ -254,29 +254,23 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
-                # Interceptar respuestas de red de Bookitit ANTES de navegar al widget
-                # Captura los AJAX cross-origin sin restricción de same-origin policy
+                # Interceptar el endpoint JSONP de Bookitit via page.route()
+                # page.route() captura el body completo antes de que llegue al browser
+                # (page.on('response') no puede leer body si es muy pequeño o streaming)
                 bkt_responses: list = []
-                all_net_urls: list = []
 
-                def _capture_bkt_response(response):
+                def _route_jsonp(route):
                     try:
-                        url_r = response.url
-                        # Log ALL requests de dominios relevantes (diagnóstico)
-                        if any(d in url_r for d in ["bookitit", "citaconsular", "onlinebooking"]):
-                            all_net_urls.append(f"[{response.status}] {url_r[:90]}")
-                        # Capturar cuerpo: JSONP/JSON de Bookitit (no HTML wrapper)
-                        if response.status == 200 and any(
-                            k in url_r for k in ["onlinebookings", "bkt_init", "agendas", "services"]
-                        ):
-                            body = response.text()
-                            if len(body) > 100 and "<html" not in body[:50]:
-                                bkt_responses.append(body)
-                                info(f"BKT data capturado: {len(body)} chars — {url_r[:70]}")
-                    except Exception:
-                        pass
+                        resp = route.fetch()
+                        body = resp.text()
+                        info(f"JSONP interceptado: {len(body)} chars — {route.request.url[:70]}")
+                        bkt_responses.append(body)
+                        route.fulfill(response=resp)
+                    except Exception as re:
+                        info(f"JSONP route error (ignorado): {re}")
+                        route.continue_()
 
-                page.on("response", _capture_bkt_response)
+                ctx.route("**/onlinebookings/main/**", _route_jsonp)
 
                 # Navegar al widget — networkidle espera a que los AJAX de Bookitit terminen
                 page.goto(url, timeout=to_widget, wait_until="networkidle")
@@ -318,10 +312,9 @@ def _check_url_widget(url: str) -> tuple:
                 bkt_data = " ".join(bkt_responses)
                 contenido_total = contenido + bkt_data
 
-                info(f"Playwright contenido: {len(contenido)} chars página + {len(bkt_data)} chars BKT network ({len(bkt_responses)} resp)")
-                info(f"Red total [{len(all_net_urls)} req]: {' | '.join(all_net_urls[:8])}")
+                info(f"Playwright contenido: {len(contenido)} chars página + {len(bkt_data)} chars JSONP ({len(bkt_responses)} resp)")
                 if bkt_data:
-                    info(f"BKT preview: {bkt_data[:300].replace(chr(10), ' ')}")
+                    info(f"JSONP preview: {bkt_data[:400].replace(chr(10), ' ')}")
                 _update_session_stamp()
 
                 if TEXTO_BLOQUEADO in contenido_total:
