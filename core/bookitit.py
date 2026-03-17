@@ -345,15 +345,22 @@ def _check_directo(pk: str, sid: str, ua: str) -> tuple:
     return False, {}, False
 
 
-# ── Capa 2: GET/POST citaconsular.es (fallback diagnóstico) ───────────────────
+# ── Capa principal: GET/POST citaconsular.es + JSONP con cookie de sesión ──────
 
 def _check_get_post(widget_url: str, ua: str, session: requests.Session) -> tuple:
     """
-    Capa 2 — Flujo GET/POST a citaconsular.es via token Imperva.
+    Flujo completo citaconsular.es — ARQUITECTURA REAL descubierta Mar 17:
 
-    NOTA: Investigación confirma que este flujo sufre un "soft block":
-    Imperva acepta el token pero devuelve bkt_init_widget({}) vacío fabricado.
-    Se mantiene como fallback diagnóstico — los datos vacíos son esperados.
+    El POST response contiene bkt_init_widget = { srvsrc, publickey, services, agendas:[], dates:[] }
+    Esto es solo CONFIGURACIÓN del widget, NO datos de disponibilidad.
+    El widget carga loadermaec.js que hace el JSONP real con la cookie Imperva del POST.
+
+    Flujo correcto:
+      1. GET widget → token Imperva
+      2. POST con token → Imperva establece cookie sesión + devuelve config
+      3. Extraer srvsrc + publickey + services del config
+      4. GET {srvsrc}/onlinebookings/main/?publickey=...&services[]=... CON cookie
+         → Datos REALES de disponibilidad
 
     Retorna (disponible: bool, data: dict).
     """
@@ -387,7 +394,7 @@ def _check_get_post(widget_url: str, ua: str, session: requests.Session) -> tupl
         error(f"BKT token RECHAZADO por seguridad: {se}")
         return False, {}
 
-    # Paso 3 — POST: enviar token
+    # Paso 3 — POST: enviar token → Imperva establece cookie de sesión
     _human_sleep(0.8, 2.0)
     post_headers = dict(headers)
     post_headers.update({
@@ -410,35 +417,96 @@ def _check_get_post(widget_url: str, ua: str, session: requests.Session) -> tupl
         return False, {}
 
     post_text = r_post.text
-    info(f"BKT POST: {r_post.status_code} — {len(post_text)} chars")
-    info(f"BKT POST preview: {post_text[:800].replace(chr(10), ' | ')}")
+    cookies_set = list(session.cookies.keys())
+    info(f"BKT POST: {r_post.status_code} — {len(post_text)} chars | cookies: {cookies_set}")
 
-    # Paso 4 — Parsear bkt_init_widget
+    # Paso 4 — Extraer config del widget del POST response
     bkt_pos = post_text.find("bkt_init_widget")
     if bkt_pos < 0:
-        warn("BKT: bkt_init_widget NO encontrado en POST response (Imperva soft-block?)")
+        warn("BKT: bkt_init_widget NO encontrado en POST response")
         return False, {}
 
-    bkt_block = post_text[bkt_pos: bkt_pos + 8000]
-    info(f"BKT widget block: {bkt_block[:600].replace(chr(10), ' | ')}")
+    bkt_config = post_text[bkt_pos: bkt_pos + 3000]
 
-    data = _parse_bkt_widget(bkt_block)
-    info(
-        f"BKT: agendas={data['agendas_count']} "
-        f"dates={data['dates_count']} "
-        f"hours={data['hours_count']} "
-        f"raw={data['dates_raw']}"
-    )
+    # Extraer srvsrc (dominio base para el JSONP real)
+    m_src = re.search(r"srvsrc\s*:\s*['\"]([^'\"]+)['\"]", bkt_config)
+    srvsrc = m_src.group(1).rstrip("/") if m_src else "https://www.citaconsular.es"
 
-    if data["dates_count"] > 0 or data["hours_count"] > 0:
-        info("BKT: *** DISPONIBILIDAD DETECTADA (fechas o slots) ***")
-        return True, data
+    # Extraer publickey del config
+    m_pk = re.search(r"publickey\s*:\s*['\"]([a-zA-Z0-9]+)['\"]", bkt_config)
+    pk_config = m_pk.group(1) if m_pk else ""
+    if not pk_config:
+        pk_config, _ = _extract_pk_sid(widget_url)
 
-    if data["agendas_count"] > 0:
-        info("BKT: agendas presentes pero sin fechas ni horas — sin citas hoy")
-    else:
-        info("BKT: agendas[], dates[] y hours[] vacíos — soft block Imperva confirmado")
+    # Extraer services[] del config
+    m_svc = re.search(r"services\s*:\s*\[([^\]]*)\]", bkt_config)
+    services_raw = m_svc.group(1) if m_svc else ""
+    services = re.findall(r"['\"]([^'\"]+)['\"]", services_raw)
 
+    info(f"BKT config: srvsrc={srvsrc} pk={pk_config[:16]}... services={services}")
+
+    # Paso 5 — GET JSONP con cookie de sesión Imperva
+    # loadermaec.js hace este call con las cookies del browser → nosotros con Session()
+    ts = int(time.time() * 1000)
+    params_list = [
+        ("callback",  "bkt_init_widget"),
+        ("publickey", pk_config),
+        ("lang",      "es"),
+        ("type",      "default"),
+        ("version",   "5"),
+        ("_",         ts),
+    ]
+    for svc in services:
+        params_list.append(("services[]", svc))
+
+    jsonp_url = f"{srvsrc}/onlinebookings/main/"
+    jsonp_hdrs = {
+        "User-Agent":      ua,
+        "Accept":          "*/*",
+        "Accept-Language": "es-ES,es;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer":         widget_url,
+        "Sec-Fetch-Dest":  "script",
+        "Sec-Fetch-Mode":  "no-cors",
+        "Sec-Fetch-Site":  "same-origin",
+        "Connection":      "keep-alive",
+    }
+
+    try:
+        _human_sleep(0.3, 0.8)
+        r_jsonp = session.get(
+            jsonp_url, params=params_list,
+            headers=jsonp_hdrs, timeout=20, allow_redirects=True,
+        )
+        jsonp_text = r_jsonp.text
+        info(f"BKT JSONP: {r_jsonp.status_code} — {len(jsonp_text)} chars")
+        if jsonp_text:
+            info(f"BKT JSONP preview: {jsonp_text[:600].replace(chr(10), ' | ')}")
+
+        if "bkt_init_widget" in jsonp_text or "agendas" in jsonp_text:
+            j_pos = jsonp_text.find("bkt_init_widget")
+            if j_pos < 0:
+                j_pos = 0
+            data = _parse_bkt_widget(jsonp_text[j_pos: j_pos + 10000])
+            info(f"BKT JSONP parsed: agendas={data['agendas_count']} dates={data['dates_count']} hours={data['hours_count']} raw={data['dates_raw']}")
+            if data["dates_count"] > 0 or data["hours_count"] > 0:
+                info("BKT JSONP: *** DISPONIBILIDAD DETECTADA ***")
+                return True, data
+            if data["agendas_count"] > 0 or data["id_centro"]:
+                info("BKT JSONP: agendas reales pero sin fechas — sin citas hoy")
+                return False, data
+            info("BKT JSONP: bkt vacío — agendas=0, sin citas o soft-block persistente")
+            return False, data
+        elif len(jsonp_text) == 0:
+            warn("BKT JSONP: 0 chars — cookie de sesión no desbloqueó el endpoint")
+        else:
+            info(f"BKT JSONP: respuesta sin bkt_init_widget ({len(jsonp_text)} chars)")
+    except Exception as e:
+        warn(f"BKT JSONP error: {e}")
+
+    # Si JSONP falló, al menos tenemos el config del POST
+    data = _parse_bkt_widget(bkt_config)
+    info(f"BKT (config POST): agendas={data['agendas_count']} dates={data['dates_count']}")
     return False, data
 
 
