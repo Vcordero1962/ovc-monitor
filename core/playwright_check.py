@@ -314,6 +314,8 @@ def _check_url_widget(url: str) -> tuple:
                 contenido_total = contenido + bkt_data
 
                 info(f"Playwright contenido: {len(contenido)} chars página + {len(bkt_data)} chars BKT network ({len(bkt_responses)} resp)")
+                if bkt_data:
+                    info(f"BKT preview: {bkt_data[:300].replace(chr(10), ' ')}")
                 _update_session_stamp()
 
                 if TEXTO_BLOQUEADO in contenido_total:
