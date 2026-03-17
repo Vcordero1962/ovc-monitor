@@ -213,6 +213,8 @@ def _check_url_widget(url: str) -> tuple:
                 ctx.clear_cookies()
 
             page = ctx.new_page()
+            # Auto-aceptar dialogs JS (el gate de citaconsular.es muestra "Welcome/Bienvenido")
+            page.on("dialog", lambda d: d.accept())
             try:
                 # CDP: emular latencia residencial (datacenter = 1-5 ms, casa = 40-80 ms)
                 try:
