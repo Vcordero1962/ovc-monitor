@@ -265,20 +265,35 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
-                # Interceptar el endpoint JSONP de Bookitit via page.route()
-                # page.route() captura el body completo antes de que llegue al browser
-                # (page.on('response') no puede leer body si es muy pequeño o streaming)
+                # Interceptar JSONP de Bookitit y redirigir a app.bookitit.com
+                # El widget llama citaconsular.es/onlinebookings/main/ que tiene Imperva.
+                # Reescribimos la URL a app.bookitit.com (mismo endpoint, sin WAF).
                 bkt_responses: list = []
 
                 def _route_jsonp(route):
+                    import requests as _req
+                    orig_url = route.request.url
+                    # Reescribir dominio: citaconsular.es → app.bookitit.com
+                    bkt_url = orig_url.replace(
+                        "www.citaconsular.es", "app.bookitit.com"
+                    ).replace("citaconsular.es", "app.bookitit.com")
                     try:
-                        resp = route.fetch()
-                        body = resp.text()
-                        info(f"JSONP interceptado: {len(body)} chars — {route.request.url[:70]}")
+                        r = _req.get(bkt_url, timeout=15, headers={
+                            "User-Agent":      route.request.headers.get("user-agent", ua),
+                            "Accept":          "*/*",
+                            "Referer":         "https://app.bookitit.com/",
+                            "Accept-Language": "es-ES,es;q=0.9",
+                        })
+                        body = r.text
+                        info(f"JSONP reescrito: {len(body)} chars — {bkt_url[:70]}")
                         bkt_responses.append(body)
-                        route.fulfill(response=resp)
-                    except Exception as re:
-                        info(f"JSONP route error (ignorado): {re}")
+                        route.fulfill(
+                            status=200,
+                            body=body,
+                            headers={"Content-Type": "application/javascript; charset=utf-8"},
+                        )
+                    except Exception as re_e:
+                        info(f"JSONP rewrite error ({re_e}) — usando original")
                         route.continue_()
 
                 ctx.route("**/onlinebookings/main/**", _route_jsonp)
