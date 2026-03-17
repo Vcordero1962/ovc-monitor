@@ -34,6 +34,7 @@ from core.security import validate_telegram_creds
 import core.bookitit       as bookitit
 import core.avc            as avc
 import core.telegram       as tg
+from core.alertas_dm import enviar_alerta_suscriptores
 
 if SITIO_DIRECTO_ENABLED:
     import core.playwright_check as pw
@@ -92,6 +93,8 @@ def main():
                 f"🚨 <b>CITA DISPONIBLE — {nombre}</b>\n⏰ {hora}\n\nEntra YA.",
                 url_boton=url, silencioso=False,
             )
+            # ── DM privado a suscriptores con watermark ─────────────────────
+            enviar_alerta_suscriptores(tramite, url, fecha_detectada=hora)
         if hits_sitio:
             _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc)
             sys.exit(0)
@@ -121,6 +124,8 @@ def main():
                 f"🚨 <b>CITA DISPONIBLE — {nombre}</b>\n⏰ {hora}\n\nEntra YA.",
                 url_boton=url, silencioso=False,
             )
+            # ── DM privado a suscriptores con watermark ─────────────────────
+            enviar_alerta_suscriptores(tramite, url, fecha_detectada=hora)
         if hits_bkt:
             _send_status(hora, tramites, hits_sitio, hits_bkt, hits_avc)
             sys.exit(0)
@@ -152,6 +157,9 @@ def main():
             f"⚠️ <b>Alerta AVC — {nombre}</b>\n⏰ {hora}\nCitas abriendo pronto.",
             url_boton=url_servicio, silencioso=True,
         )
+        # ── DM privado a suscriptores con watermark ─────────────────────────
+        enviar_alerta_suscriptores(tramite, url_servicio,
+                                   fecha_detectada=hora, detalles=detalle[:100])
 
     if not hits_avc:
         info("[CAPA 3] Sin novedad en canal AVC")

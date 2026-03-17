@@ -1,0 +1,48 @@
+name: OVC Gestor Bot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bot/**'
+      - 'db/**'
+      - 'core/**'
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # ~6h — límite GitHub Actions free tier
+
+    env:
+      BOT_GESTOR_TOKEN:   ${{ secrets.BOT_GESTOR_TOKEN }}
+      ADMIN_TELEGRAM_ID:  ${{ secrets.ADMIN_TELEGRAM_ID }}
+      NEON_DATABASE_URL:  ${{ secrets.NEON_DATABASE_URL }}
+      PYTHONIOENCODING:   utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Verificar secrets
+        run: |
+          [ -z "$BOT_GESTOR_TOKEN"  ] && echo "ERROR: BOT_GESTOR_TOKEN vacío"  && exit 1 || true
+          [ -z "$ADMIN_TELEGRAM_ID" ] && echo "ERROR: ADMIN_TELEGRAM_ID vacío" && exit 1 || true
+          [ -z "$NEON_DATABASE_URL" ] && echo "ERROR: NEON_DATABASE_URL vacío" && exit 1 || true
+          echo "Secrets OK"
+
+      - name: Aplicar schema DB (idempotente)
+        run: python -X utf8 -c "
+from db.connection import ejecutar_schema
+ejecutar_schema()
+"
+
+      - name: Arrancar bot gestor
+        run: python -X utf8 bot/ovc_bot.py
