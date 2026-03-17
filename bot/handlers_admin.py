@@ -18,7 +18,7 @@ Comandos:
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 from core.logger import info, warn, error
@@ -104,7 +104,7 @@ async def cmd_admin_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"💰 Ingresos este mes:   ${ingresos:.2f} USD\n"
         f"⚠️  Vencen en 7 días:    {expiran_7d}\n"
         f"────────────────────\n"
-        f"_Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC_"
+        f"_Generado: {(datetime.now(timezone.utc) - timedelta(hours=4)).strftime('%d/%m/%Y %I:%M %p')} (Miami)_"
     )
     _registrar_audit(update.effective_user.id, "/admin_stats")
     await update.message.reply_text(msg, parse_mode="Markdown")
