@@ -14,7 +14,7 @@ Funciones públicas:
 import json
 import requests
 
-from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ADMIN_CHAT_ID, URL_AVC
+from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ADMIN_CHAT_ID
 from core.logger import info, warn, error
 from core.security import validate_telegram_creds
 
@@ -44,18 +44,17 @@ def _post(endpoint: str, **kwargs) -> bool:
 
 
 def _build_keyboard(url_sitio: str) -> list:
-    """Construye inline keyboard con botones RESERVAR + AVC."""
+    """Construye inline keyboard con botón RESERVAR (solo si hay URL)."""
     teclado = []
     if url_sitio:
         teclado.append([{"text": "🔴🔴  RESERVAR CITA — ENTRA YA  🔴🔴", "url": url_sitio}])
-    teclado.append([{"text": "📢 Ver aviso oficial en AVC", "url": URL_AVC}])
     return teclado
 
 
 # ── Funciones públicas ─────────────────────────────────────────────────────────
 
 def send_text(msg: str, url_boton: str = "") -> bool:
-    """Envía mensaje de texto al grupo con botones RESERVAR + AVC."""
+    """Envía mensaje de texto al grupo con botón RESERVAR CITA."""
     if not _creds_ok() or not TELEGRAM_CHAT_ID:
         return False
     ok = _post("sendMessage", json={
@@ -163,9 +162,7 @@ def send_status(
 
 def generar_card(tipo: str, nombre: str, hora: str, detalle: str = "") -> bytes | None:
     """
-    Genera imagen PNG branded para alertas.
-
-    tipo: 'SITIO' → rojo urgente | 'AVC' → naranja alerta temprana
+    Genera imagen PNG branded para alertas de cita disponible.
     Retorna bytes PNG o None si Pillow no está disponible.
     """
     try:
@@ -174,20 +171,12 @@ def generar_card(tipo: str, nombre: str, hora: str, detalle: str = "") -> bytes 
 
         W, H = 800, 420
 
-        if tipo == "SITIO":
-            bg_top    = (120, 0, 0)
-            bg_bottom = (60, 0, 0)
-            accent    = (255, 60, 60)
-            header    = "!! CITA DISPONIBLE AHORA"
-            cta_color = (255, 210, 210)
-            cta_texto = "Tienes ~2 minutos. Entra YA y completa el captcha."
-        else:
-            bg_top    = (110, 55, 0)
-            bg_bottom = (55, 25, 0)
-            accent    = (255, 165, 0)
-            header    = ">>  ALERTA TEMPRANA - CANAL AVC"
-            cta_color = (255, 230, 160)
-            cta_texto = "Ten el formulario listo. Actua en cuanto abran."
+        bg_top    = (120, 0, 0)
+        bg_bottom = (60, 0, 0)
+        accent    = (255, 60, 60)
+        header    = "!! CITA DISPONIBLE AHORA"
+        cta_color = (255, 210, 210)
+        cta_texto = "Tienes ~2 minutos. Entra YA y completa el captcha."
 
         img  = Image.new("RGB", (W, H), bg_top)
         draw = ImageDraw.Draw(img)
@@ -225,7 +214,7 @@ def generar_card(tipo: str, nombre: str, hora: str, detalle: str = "") -> bytes 
         draw.line([(40, 210), (W - 40, 210)], fill=(90, 90, 90), width=1)
         draw.text((40, 228), cta_texto, fill=cta_color, font=_font(30))
 
-        if detalle and tipo == "AVC":
+        if detalle:
             txt = detalle[:90] + ("..." if len(detalle) > 90 else "")
             draw.text((40, 278), txt, fill=(160, 160, 160), font=_font(20))
 

@@ -35,8 +35,6 @@ USER_DATA_DIR    = Path(os.getenv("CHROMIUM_PROFILE_DIR", str(_DEFAULT_PROFILE))
 SESSION_STAMP    = USER_DATA_DIR / "ovc_session.json"
 SESSION_MAX_MIN  = 25   # tokens de citaconsular.es duran ~20-30 min
 
-# ── Canal AVC ──────────────────────────────────────────────────────────────────
-URL_AVC         = "https://t.me/s/AsesorVirtualC"
 TEXTO_BLOQUEADO = "No hay horas disponibles"
 
 # ── Catálogo de servicios consulares (Consulado de España en La Habana) ────────
@@ -77,14 +75,6 @@ SERVICIOS: dict = {
         "url_env":  "URL_NOTARIAL",
     },
 }
-
-# ── Frases de alerta del canal AVC ─────────────────────────────────────────────
-AVC_ALERTAS: list = [
-    "CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA",
-    "HABRAN CITAS", "SE ABRIRAN", "DISPONIBLES", "HABILITADAS",
-    "APERTURA", "ABRIRA CITAS", "NUEVAS CITAS", "FECHA DE APERTURA",
-    "ABRIRAN CITAS", "HABRAN TURNOS",
-]
 
 # ── Pool de User-Agents (13 perfiles desktop + mobile) ─────────────────────────
 USER_AGENTS: list = [
