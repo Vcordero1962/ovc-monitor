@@ -26,6 +26,8 @@ from core.logger import warn, error
 _DOMINIOS_PERMITIDOS = {
     "www.citaconsular.es",
     "citaconsular.es",
+    "app.bookitit.com",   # Bookitit directo (bypass Imperva de citaconsular.es)
+    "www.bookitit.com",
 }
 
 # ── Formato del token Imperva ──────────────────────────────────────────────────

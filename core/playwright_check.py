@@ -144,6 +144,15 @@ def _check_url_widget(url: str) -> tuple:
         error(f"Playwright: URL rechazada — {e}")
         return False, None, True
 
+    # Transformar URL de citaconsular.es → app.bookitit.com para evitar Imperva WAF
+    # Imperva bloquea el JSONP /onlinebookings/main/ desde IPs de datacenter.
+    # app.bookitit.com sirve el mismo widget sin WAF.
+    bkt_direct_url = url
+    if "citaconsular.es" in url and "/es/hosteds/widgetdefault/" in url:
+        bkt_direct_url = url.replace("www.citaconsular.es", "app.bookitit.com") \
+                            .replace("citaconsular.es", "app.bookitit.com")
+        info(f"URL transformada → Bookitit directo (bypass Imperva): {bkt_direct_url[:80]}")
+
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWT
 
@@ -272,21 +281,21 @@ def _check_url_widget(url: str) -> tuple:
 
                 ctx.route("**/onlinebookings/main/**", _route_jsonp)
 
-                # Navegar al widget — networkidle espera a que los AJAX de Bookitit terminen
-                page.goto(url, timeout=to_widget, wait_until="networkidle")
+                # Navegar al widget directo en Bookitit (bypass Imperva de citaconsular.es)
+                page.goto(bkt_direct_url, timeout=to_widget, wait_until="networkidle")
                 _human_sleep(1.2, 4.0)
 
-                # Imperva gate bypass
+                # Imperva gate bypass (por si acaso — normalmente no aplica en bookitit.com)
                 try:
                     if page.locator('input[name="token"]').count() > 0:
-                        info("Imperva gate detectado — enviando token via click...")
+                        info("Gate detectado — enviando token via click...")
                         page.locator(
                             'button[type="submit"], input[type="submit"], '
                             'button:has-text("Continuar"), button:has-text("Continue"), '
                             'a:has-text("Continuar"), a:has-text("Continue")'
                         ).first.click(timeout=8000)
                         page.wait_for_load_state("networkidle", timeout=25000)
-                        info(f"Gate superado — {len(page.content())} chars tras POST token")
+                        info(f"Gate superado — {len(page.content())} chars")
                         _human_sleep(0.5, 1.5)
                 except Exception as gate_e:
                     info(f"Gate handling (ignorado): {gate_e}")
