@@ -295,18 +295,56 @@ def _check_url_widget(url: str) -> tuple:
                 page.goto(bkt_direct_url, timeout=to_widget, wait_until="networkidle")
                 _human_sleep(1.2, 4.0)
 
-                # Imperva gate bypass (por si acaso — normalmente no aplica en bookitit.com)
+                # ── Imperva gate bypass ────────────────────────────────────────
+                # citaconsular.es muestra siempre una pantalla intermedia:
+                # "Para solicitar cita pulse en el botón continuar / Continue / Continuar"
+                # Hay que detectarla y hacer clic para que Imperva establezca la cookie
+                # de sesión y redirija al widget real (confirmado con screenshots Mar 18).
+                _IMPERVA_TEXTS = [
+                    "pulse en el botón continuar",
+                    "click on the continue button",
+                    "continue / continuar",
+                ]
                 try:
-                    if page.locator('input[name="token"]').count() > 0:
-                        info("Gate detectado — enviando token via click...")
-                        page.locator(
-                            'button[type="submit"], input[type="submit"], '
+                    body_txt = (page.inner_text("body") or "").lower()
+                    es_gate = (
+                        any(t in body_txt for t in _IMPERVA_TEXTS)
+                        or page.locator('input[name="token"]').count() > 0
+                    )
+                    if es_gate:
+                        info("Imperva gate detectado — haciendo clic en Continuar...")
+                        _BTN = (
                             'button:has-text("Continuar"), button:has-text("Continue"), '
-                            'a:has-text("Continuar"), a:has-text("Continue")'
-                        ).first.click(timeout=8000)
-                        page.wait_for_load_state("networkidle", timeout=25000)
+                            'a:has-text("Continuar"), a:has-text("Continue"), '
+                            'button[type="submit"], input[type="submit"]'
+                        )
+                        try:
+                            page.locator(_BTN).first.click(timeout=8000)
+                            info("Click en Continuar — OK")
+                        except Exception:
+                            # Fallback: Enter o JS click en el primer botón visible
+                            try:
+                                page.evaluate(
+                                    "document.querySelector('button,input[type=submit],a').click()"
+                                )
+                                info("Click JS fallback en botón")
+                            except Exception:
+                                page.keyboard.press("Enter")
+                                info("Enter fallback")
+
+                        _human_sleep(2.0, 3.5)  # esperar redirect post-gate
+
+                        # Si la URL sigue siendo la del challenge, re-navegar al widget
+                        if "citaconsular.es/es/hosteds" not in page.url:
+                            info(f"Re-navegando al widget (URL actual: {page.url[:60]})")
+                            page.goto(bkt_direct_url, timeout=to_widget, wait_until="networkidle")
+                            _human_sleep(1.5, 3.0)
+                        else:
+                            page.wait_for_load_state("networkidle", timeout=20000)
+
                         info(f"Gate superado — {len(page.content())} chars")
-                        _human_sleep(0.5, 1.5)
+                    else:
+                        info("Imperva gate: no detectado — widget directo")
                 except Exception as gate_e:
                     info(f"Gate handling (ignorado): {gate_e}")
 
