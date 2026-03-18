@@ -144,14 +144,12 @@ def _check_url_widget(url: str) -> tuple:
         error(f"Playwright: URL rechazada — {e}")
         return False, None, True
 
-    # Transformar URL de citaconsular.es → app.bookitit.com para evitar Imperva WAF
-    # Imperva bloquea el JSONP /onlinebookings/main/ desde IPs de datacenter.
-    # app.bookitit.com sirve el mismo widget sin WAF.
+    # Navegar directamente a citaconsular.es — IP residencial bypassa Imperva sin transformar.
+    # Así el widget JS hace sus AJAX calls (getservices, getwidgetconfigurations) al mismo
+    # dominio y podemos interceptarlas con page.on("response", ...).
+    # (La transformación a app.bookitit.com era para datacenter — innecesaria en IP residencial)
     bkt_direct_url = url
-    if "citaconsular.es" in url and "/es/hosteds/widgetdefault/" in url:
-        bkt_direct_url = url.replace("www.citaconsular.es", "app.bookitit.com") \
-                            .replace("citaconsular.es", "app.bookitit.com")
-        info(f"URL transformada → Bookitit directo (bypass Imperva): {bkt_direct_url[:80]}")
+    info(f"URL widget (directo citaconsular.es): {bkt_direct_url[:80]}")
 
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWT
@@ -265,10 +263,35 @@ def _check_url_widget(url: str) -> tuple:
                 except Exception:
                     pass
 
-                # placeholder — sin interceptor activo (bookitit.com/onlinebookings no existe)
+                # Interceptar respuesta de getservices — contiene AllowAppointment,
+                # el flag definitivo de disponibilidad (capturado con ovc_spy Mar 18).
+                # El widget JS llama getservices automáticamente al cargar (sin interacción).
+                # Formato JSONP: jQuery123({"Services":[...],"Agendas":[],"AllowAppointment":false})
                 bkt_responses: list = []
+                getservices_data: list = []
 
-                # Navegar al widget directo en Bookitit (bypass Imperva de citaconsular.es)
+                def _on_getservices(response):
+                    if "onlinebookings/getservices/" in response.url:
+                        try:
+                            text = response.text()
+                            i0 = text.find("{")
+                            i1 = text.rfind("}")
+                            if i0 != -1 and i1 > i0:
+                                data_j = json.loads(text[i0: i1 + 1])
+                                getservices_data.append(data_j)
+                                allow = data_j.get("AllowAppointment")
+                                svcs  = data_j.get("Services", [])
+                                agns  = data_j.get("Agendas", [])
+                                info(
+                                    f"INTERCEPTADO getservices: AllowAppointment={allow} "
+                                    f"services={len(svcs)} agendas={len(agns)}"
+                                )
+                        except Exception as _ie:
+                            warn(f"Interceptor getservices error: {_ie}")
+
+                page.on("response", _on_getservices)
+
+                # Navegar al widget directo en citaconsular.es (IP residencial bypassa Imperva)
                 page.goto(bkt_direct_url, timeout=to_widget, wait_until="networkidle")
                 _human_sleep(1.2, 4.0)
 
@@ -301,6 +324,23 @@ def _check_url_widget(url: str) -> tuple:
                     pass
 
                 _human_sleep(0.4, 1.5)
+
+                # ── Verificar AllowAppointment (API directa — más fiable que DOM) ──────────
+                # getservices se interceptó automáticamente al cargar el widget.
+                if getservices_data:
+                    allow_apt = getservices_data[-1].get("AllowAppointment")
+                    if allow_apt is True:
+                        info("Playwright: AllowAppointment=True *** CITA DISPONIBLE (API) ***")
+                        screenshot = page.screenshot(type="png", full_page=False)
+                        _update_session_stamp()
+                        return True, screenshot, False
+                    elif allow_apt is False:
+                        info("Playwright: AllowAppointment=False — sin citas (confirmado via API)")
+                        _update_session_stamp()
+                        return False, None, True
+                    info(f"Playwright: AllowAppointment={allow_apt!r} — valor inesperado, analizando DOM")
+                else:
+                    info("Playwright: getservices no interceptado — analizando DOM como fallback")
 
                 # Recopilar contenido: página principal + respuestas de red interceptadas
                 # (los iframes cross-origin no son legibles via DOM — usamos network interception)

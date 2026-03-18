@@ -30,6 +30,7 @@ Función pública:
   check_all(tramites: list) → list[(tramite, nombre, url, info_dict)]
 """
 
+import json
 import re
 import random
 import time
@@ -130,6 +131,113 @@ def _jsonp_headers(ua: str) -> dict:
         "Sec-Fetch-Site":  "same-origin",
         "Connection":      "keep-alive",
     }
+
+
+# ── Capa nueva: getservices endpoint (AllowAppointment directo) ───────────────
+
+def _check_getservices(pk: str, widget_url: str, ua: str) -> tuple:
+    """
+    Capa nueva — llama directamente al endpoint getservices del widget Bookitit.
+
+    Flujo real descubierto con ovc_spy Mar 18 (captura residencial):
+      GET {domain}/onlinebookings/getservices/?callback=ovc_chk&publickey={PK}&lang=es&version=4
+      → JSONP: ovc_chk({"Services":[{"id":"bkt1180597",...}],"Agendas":[],"AllowAppointment":false})
+
+    AllowAppointment=True  → HAY CITAS DISPONIBLES
+    AllowAppointment=False → sin citas (definitivo)
+
+    Intenta en orden:
+      1. app.bookitit.com  — SaaS origin (puede ser menos estricto que citaconsular.es)
+      2. www.citaconsular.es — dominio real (funciona desde IP residencial)
+
+    Retorna (disponible: bool, data: dict, exito: bool).
+      exito=True  → endpoint respondió con JSON válido (AllowAppointment presente)
+      exito=False → ambos dominios fallaron o devolvieron respuesta no-JSONP
+    """
+    if not pk:
+        return False, {}, False
+
+    ts = int(time.time() * 1000)
+    cb = f"ovc_chk_{ts}"
+
+    # Extraer el dominio de referencia del widget_url
+    referer_domain = "www.citaconsular.es"
+    if widget_url and "citaconsular.es" in widget_url:
+        referer_domain = "www.citaconsular.es"
+
+    for base_domain in ["app.bookitit.com", "www.citaconsular.es"]:
+        endpoint = f"https://{base_domain}/onlinebookings/getservices/"
+        referer  = f"https://{referer_domain}/es/hosteds/widgetdefault/{pk}/"
+        params = {
+            "callback": cb,
+            "publickey": pk,
+            "lang":     "es",
+            "version":  "4",
+            "type":     "default",
+            "src":      referer,
+            "srvsrc":   f"https://{referer_domain}",
+            "_":        ts,
+        }
+        hdrs = {
+            "User-Agent":       ua,
+            "Accept":           "text/javascript, application/javascript, */*; q=0.01",
+            "Accept-Language":  "es-ES,es;q=0.9",
+            "Accept-Encoding":  "gzip, deflate, br",
+            "Referer":          referer,
+            "X-Requested-With": "XMLHttpRequest",
+            "Connection":       "keep-alive",
+        }
+        try:
+            r = requests.get(endpoint, params=params, headers=hdrs, timeout=15)
+            text = r.text
+            info(f"GETSERVICES [{base_domain}]: HTTP {r.status_code} — {len(text)} chars")
+            if r.status_code != 200 or not text:
+                continue
+
+            # Extraer JSON del JSONP: buscar primer { y último }
+            i0 = text.find("{")
+            i1 = text.rfind("}")
+            if i0 == -1 or i1 <= i0:
+                info(f"GETSERVICES [{base_domain}]: sin JSON en respuesta — {text[:120]}")
+                continue
+
+            data_j   = json.loads(text[i0: i1 + 1])
+            allow    = data_j.get("AllowAppointment")
+            services = data_j.get("Services", [])
+            agendas  = data_j.get("Agendas", [])
+            sid      = services[0]["id"] if services else ""
+
+            info(
+                f"GETSERVICES [{base_domain}]: AllowAppointment={allow} "
+                f"services={len(services)} agendas={len(agendas)} sid={sid}"
+            )
+
+            result = {
+                "allow_appointment": allow,
+                "services_count":    len(services),
+                "agendas_count":     len(agendas),
+                "sid":               sid,
+                "service_name":      services[0].get("name", "") if services else "",
+                "dates_count":       0,
+                "hours_count":       0,
+                "dates_raw":         "[]",
+            }
+
+            if allow is True:
+                info("GETSERVICES: *** AllowAppointment=True — CITA DISPONIBLE ***")
+                return True, result, True
+            if allow is False:
+                info("GETSERVICES: AllowAppointment=False — sin citas")
+                return False, result, True
+            # Valor inesperado (None, string, etc.) — probar siguiente dominio
+            info(f"GETSERVICES [{base_domain}]: AllowAppointment={allow!r} — valor inesperado")
+
+        except requests.exceptions.Timeout:
+            warn(f"GETSERVICES [{base_domain}]: timeout")
+        except Exception as e:
+            warn(f"GETSERVICES [{base_domain}] error: {e}")
+
+    return False, {}, False
 
 
 # ── Capa 0: Cloudflare Worker relay (IPs de CF edge — no datacenter) ──────────
@@ -609,6 +717,20 @@ def check_url(widget_url: str) -> tuple:
     session = requests.Session()
 
     pk, sid = _extract_pk_sid(widget_url)
+
+    # ── Capa nueva: getservices endpoint (AllowAppointment directo) ───────────
+    # Endpoint real del widget (descubierto con ovc_spy Mar 18).
+    # Más simple y preciso que bkt_init_widget — retorna AllowAppointment directamente.
+    # Funciona desde IP residencial (local). Desde datacenter puede ser bloqueado por Imperva.
+    if pk:
+        info(f"GETSERVICES: verificando AllowAppointment directamente (pk={pk[:12]}...)")
+        try:
+            disponible, data, exito = _check_getservices(pk, widget_url, ua)
+            if exito:
+                return disponible, data
+            warn("GETSERVICES: sin respuesta válida — continuando con capas legacy")
+        except Exception as e:
+            warn(f"GETSERVICES excepción: {e} — continuando con capas legacy")
 
     # ── Capa 0: Cloudflare Worker relay ───────────────────────────────────────
     if pk and CF_WORKER_ENABLED and CF_WORKER_URL:
