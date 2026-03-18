@@ -23,12 +23,13 @@ echo [%DATE% %TIME%] Iniciando check ventana critica... >> "%LOGFILE%"
 echo [%DATE% %TIME%] Iniciando check ventana critica...
 
 :: Configuracion para IP residencial:
-:: - Sin Playwright (no instala browser, no abre ventana)
-:: - Con Bookitit POST (HTTP puro - funciona desde IP residencial)
-:: - Sin CF Worker (sus IPs datacenter siguen bloqueadas - innecesario desde IP residencial)
-:: - Sin proxy Webshare (innecesario desde IP residencial)
+:: - Playwright ACTIVADO (headless, sin ventana visible) — IP residencial bypassa Imperva
+:: - Con Bookitit POST como fallback (HTTP puro)
+:: - Sin CF Worker (sus IPs datacenter siguen bloqueadas)
+:: - Sin proxy (usamos IP residencial directa)
 set PYTHONUTF8=1
-set SITIO_DIRECTO_ENABLED=0
+set SITIO_DIRECTO_ENABLED=1
+set PLAYWRIGHT_PROXY_ENABLED=0
 set BOOKITIT_POST_ENABLED=1
 set CF_WORKER_ENABLED=0
 set HTTP_PROXY_URL=
