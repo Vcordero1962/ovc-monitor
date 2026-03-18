@@ -18,9 +18,9 @@
 
 // PKs conocidos de citaconsular.es (La Habana) — actualizar si cambian
 // Los PKs se encuentran en las URLs configuradas: /widgetdefault/{PK}/{SID}
-// PKs confirmados por Inspector OVC — Mar 17/2026
+// PKs confirmados por Inspector OVC — Mar 17/2026; LEGA verificado browser Mar 18/2026
 const ALLOWED_PKS = new Set([
-  "25b6cfa9f112ae4ca19457abc237f7ba",   // LEGA  (Legalización)
+  "25b6cfa9f112aef4ca19457abc237f7ba",  // LEGA  (Legalización) — 33 chars, verificado
   "28330379fc95acafd31ee9e8938c278ff",  // LMD   (Legalización Matrimonio/Defunción)
   "22091b5b8d43b89fb226cabb272a844f9",  // PASAPORTE
   "28db94e270580be60f6e00285a7d8141f",  // VISADO
