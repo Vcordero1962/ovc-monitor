@@ -195,6 +195,23 @@ git diff --staged | grep -i "token\|password\|secret\|api_key"
 | Stealth script | `ovc_once.py` L~56 | Oculta `navigator.webdriver` |
 | Cron irregular | `ovc_monitor.yml` | Minutos no uniformes |
 | Auto-fallback wg0 | `ovc_once.py` | Si WireGuard sin handshake → desactivar |
+| AllowAppointment interceptor | `playwright_check.py` | page.on("response") para getservices |
+| URL directa citaconsular.es | `playwright_check.py` | NO transformar a app.bookitit.com (IP residencial bypassa) |
+| _check_getservices primera capa | `bookitit.py` | AllowAppointment más fiable que bkt_init_widget |
+
+### 4.3 API Bookitit real (descubierta Mar 18 con ovc_spy)
+
+> ⚠️ **NO usar `/onlinebookings/main/` como endpoint primario** — devuelve `bkt_init_widget`
+> vacío fabricado por Imperva (soft-block). El endpoint correcto es `getservices/`.
+
+| Endpoint | Descripción | Flag clave |
+|----------|-------------|------------|
+| `GET /onlinebookings/getwidgetconfigurations/?publickey={PK}` | Config widget | - |
+| `GET /onlinebookings/getservices/?publickey={PK}` | Servicios + disponibilidad | `AllowAppointment` |
+| `GET /onlinebookings/getagendas/?services[]={SID}` | Agendas del servicio | `Agendas[]` |
+| `GET /onlinebookings/getdates/` | Fechas disponibles | `dates[]` |
+
+**LEGA**: PK=`25b6cfa9f112aef4ca19457abc237f7ba` (33 chars), SID=`bkt1180597`
 
 ### 4.3 Flujo de alerta (NO romper)
 
@@ -379,10 +396,10 @@ docker-compose up -d                # reiniciar
 
 ---
 
-**Versión:** 2.0
+**Versión:** 2.1
 **Activado:** 15 Marzo 2026
-**Actualizado:** 16 Marzo 2026
-**Compliance Streak:** 🟢 2 sesiones
+**Actualizado:** 18 Marzo 2026
+**Compliance Streak:** 🟢 5 sesiones
 **Próxima revisión:** Cuando haya cambio arquitectónico significativo
 
 ---

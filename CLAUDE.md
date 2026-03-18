@@ -1,5 +1,5 @@
 # CLAUDE.md — Contexto del Proyecto OVC
-## Versión: 2.0 — Actualizado: 16 Marzo 2026
+## Versión: 2.1 — Actualizado: 18 Marzo 2026
 
 ## Propósito
 Sistema integral de vigilancia y alerta de citas consulares para **legalización de documentos**
@@ -100,8 +100,18 @@ OVC/
 
 | Capa | Mecanismo | Costo | Estado |
 |------|-----------|-------|--------|
-| 1 | Playwright sitio directo | $3/mes (proxy residencial) | `SITIO_DIRECTO_ENABLED=0` — desactivado |
-| 2 | Bookitit POST directo | $0 | `BOOKITIT_POST_ENABLED=1` — **ACTIVO** |
+| 1 | Playwright sitio directo (residencial) | $0 local | `SITIO_DIRECTO_ENABLED=1` local (ventanas críticas) |
+| 2 | Bookitit getservices/POST directo | $0 | `BOOKITIT_POST_ENABLED=1` — **ACTIVO** |
+
+**Estrategia IP:**
+- **Local PC (residencial)**: Playwright con `AllowAppointment` interceptor — 100% fiable
+- **GitHub Actions (datacenter)**: `_check_getservices` → bloqueado por Imperva → capas legacy
+
+**API endpoints reales descubiertos (ovc_spy Mar 18):**
+- `GET /onlinebookings/getwidgetconfigurations/?publickey={PK}` → config widget
+- `GET /onlinebookings/getservices/?publickey={PK}` → **AllowAppointment** (flag definitivo)
+- `GET /onlinebookings/getagendas/?services[]={SID}` → agendas (si AllowAppointment=true)
+- **LEGA SID**: `bkt1180597` | **PK**: `25b6cfa9f112aef4ca19457abc237f7ba` (33 chars)
 
 > ⛔ **AVC eliminado definitivamente** — canal Telegram de tercero que compite
 > directamente con el mercado objetivo de OVC. OVC no depende de ningún competidor.
@@ -199,7 +209,9 @@ docker compose up -d
 
 | Fecha | Cambios principales |
 |-------|---------------------|
-| Mar 16 2026 | **Sesión actual**: Bot gestor + Neon DB + watermark DM + elimina AVC definitivamente |
+| Mar 18 2026 | **Sesión 5**: ovc_spy flujo completo, AllowAppointment interceptor, ventanas críticas — commits `31c95e9`→`b1ce24c` |
+| Mar 17 2026 | ovc_inspector + Capa 1 app.bookitit.com directo (root cause Imperva soft-block resuelto) — commit `ba591fc` |
+| Mar 16 2026 | Bot gestor + Neon DB + watermark DM + elimina AVC definitivamente |
 | Mar 16 2026 (burst) | ovc_burst.py + ovc_burst.yml — cron 2x/día ventanas críticas — commit `1e1a6a2` |
 | Mar 16 2026 (Bookitit) | Bookitit POST directo confirmado producción — bypass Imperva $0 — commit `f2be8b4` |
 | Mar 15 2026 (noche) | Heartbeat anti-ráfaga: edita mensaje pinneado + ADMIN_CHAT_ID + anti-dup 2h |
