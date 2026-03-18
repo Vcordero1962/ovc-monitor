@@ -1,0 +1,4 @@
+name = "ovc-relay"
+main = "worker.js"
+compatibility_date = "2024-03-01"
+account_id = "345f20c11894fb5b1658737c78a0ed4f"
