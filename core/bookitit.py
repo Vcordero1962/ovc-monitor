@@ -242,15 +242,16 @@ def _check_getservices(pk: str, widget_url: str, ua: str) -> tuple:
 
 # ── Capa 0: Cloudflare Worker relay (IPs de CF edge — no datacenter) ──────────
 
-def _check_cf_worker(pk: str, sid: str, ua: str, mode: str = "full") -> tuple:
+def _check_cf_worker(pk: str, sid: str, ua: str, mode: str = "getservices") -> tuple:
     """
     Capa 0 — Llama al CF Worker propio como intermediario.
 
     El Worker corre en IPs de Cloudflare (104.x.x.x) que Imperva/Bookitit
     trata diferente a IPs de GitHub Actions/datacenter.
 
-    mode="jsonp" → JSONP directo desde CF (rápido, puede no tener cookies)
-    mode="full"  → Worker hace GET→POST→JSONP internamente (con cookie Imperva)
+    mode="getservices" → AllowAppointment directo (más confiable, rápido)
+    mode="full"        → Worker hace GET→POST→JSONP internamente (con cookie Imperva)
+    mode="jsonp"       → JSONP directo desde CF (rápido, puede no tener cookies)
 
     Retorna (disponible: bool, data: dict, exito: bool).
     """
@@ -265,22 +266,54 @@ def _check_cf_worker(pk: str, sid: str, ua: str, mode: str = "full") -> tuple:
     if CF_WORKER_SECRET:
         params["secret"] = CF_WORKER_SECRET
 
+    timeout = 20 if mode == "getservices" else 35
+
     try:
         r = requests.get(
             CF_WORKER_URL,
             params=params,
             headers={"User-Agent": ua, "Accept": "*/*"},
-            timeout=35,   # mode=full necesita más tiempo (3 requests encadenados)
+            timeout=timeout,
         )
         text = r.text
         chars = len(text)
-        has_bkt = "bkt_init_widget" in text
-        info(f"CF-WORKER [{mode}]: HTTP {r.status_code} — {chars} chars — bkt={has_bkt}")
+        info(f"CF-WORKER [{mode}]: HTTP {r.status_code} — {chars} chars")
 
         if r.status_code in (401, 403):
             warn(f"CF-WORKER: acceso denegado ({r.status_code}) — verificar CF_WORKER_SECRET")
             return False, {}, False
 
+        # ── Modo getservices: AllowAppointment directo ─────────────────────────
+        if mode == "getservices":
+            try:
+                resp_j = json.loads(text)
+                if not resp_j.get("ok"):
+                    warn(f"CF-WORKER getservices: sin respuesta válida — {text[:200]}")
+                    return False, {}, False
+                allow = resp_j.get("AllowAppointment")
+                result = {
+                    "allow_appointment": allow,
+                    "services_count":    resp_j.get("services_count", 0),
+                    "agendas_count":     resp_j.get("agendas_count",  0),
+                    "sid":               resp_j.get("sid", ""),
+                    "dates_count":       0,
+                    "hours_count":       0,
+                    "dates_raw":         "[]",
+                }
+                info(f"CF-WORKER getservices: AllowAppointment={allow} domain={resp_j.get('domain','?')}")
+                if allow is True:
+                    info("CF-WORKER: *** AllowAppointment=True — CITA DISPONIBLE ***")
+                    return True, result, True
+                if allow is False:
+                    return False, result, True
+                warn(f"CF-WORKER getservices: AllowAppointment={allow!r} — valor inesperado")
+                return False, {}, False
+            except Exception as e:
+                warn(f"CF-WORKER getservices parse error: {e} — {text[:200]}")
+                return False, {}, False
+
+        # ── Modos jsonp / full: buscar bkt_init_widget ─────────────────────────
+        has_bkt = "bkt_init_widget" in text
         if not has_bkt:
             if chars > 0:
                 info(f"CF-WORKER preview: {text[:200].replace(chr(10), ' | ')}")
@@ -301,7 +334,7 @@ def _check_cf_worker(pk: str, sid: str, ua: str, mode: str = "full") -> tuple:
         return False, {}, False
 
     except requests.exceptions.Timeout:
-        warn(f"CF-WORKER [{mode}]: timeout (>{35}s)")
+        warn(f"CF-WORKER [{mode}]: timeout (>{timeout}s)")
         return False, {}, False
     except Exception as e:
         warn(f"CF-WORKER error: {e}")
@@ -736,15 +769,19 @@ def check_url(widget_url: str) -> tuple:
     if pk and CF_WORKER_ENABLED and CF_WORKER_URL:
         info(f"CF-WORKER: intentando relay via Cloudflare edge (pk={pk[:12]}... sid={sid or 'N/A'})")
         try:
-            # Primero mode=full (GET→POST→JSONP interno en el Worker)
+            # Primero mode=getservices (AllowAppointment directo — más confiable)
+            disponible, data, exito = _check_cf_worker(pk, sid, ua, mode="getservices")
+            if exito:
+                return disponible, data
+            # Si getservices falló, probar mode=full (GET→POST→JSONP con cookie)
             disponible, data, exito = _check_cf_worker(pk, sid, ua, mode="full")
             if exito:
                 return disponible, data
-            # Si full falló, probar mode=jsonp (más rápido, sin cookies)
+            # Último fallback: jsonp simple
             disponible, data, exito = _check_cf_worker(pk, sid, ua, mode="jsonp")
             if exito:
                 return disponible, data
-            warn("CF-WORKER: sin respuesta válida en ambos modos — pasando a Capa 1")
+            warn("CF-WORKER: sin respuesta válida en todos los modos — pasando a Capa 1")
         except Exception as e:
             warn(f"CF-WORKER excepción: {e} — pasando a Capa 1")
     elif CF_WORKER_ENABLED and not CF_WORKER_URL:

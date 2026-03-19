@@ -71,7 +71,69 @@ export default {
 
     const ts = Date.now();
 
-    // Construir URL objetivo
+    // ── Modo getservices: endpoint AllowAppointment directo ──────────────────────
+    // Más confiable que bkt_init_widget — retorna AllowAppointment=true/false directamente.
+    if (mode === "getservices") {
+      const referer = `https://www.citaconsular.es/es/hosteds/widgetdefault/${pk}/`;
+      const params  = new URLSearchParams({
+        callback:  `ovc_gs_${ts}`,
+        publickey: pk,
+        lang:      lang,
+        version:   "4",
+        type:      "default",
+        src:       referer,
+        srvsrc:    "https://www.citaconsular.es",
+        _:         ts,
+      });
+
+      // Intentar en los dos dominios, igual que bookitit.py
+      for (const domain of ["app.bookitit.com", "www.citaconsular.es"]) {
+        try {
+          const gsUrl = `https://${domain}/onlinebookings/getservices/?${params}`;
+          const r = await fetch(gsUrl, {
+            method: "GET",
+            headers: {
+              "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+              "Accept":           "text/javascript, application/javascript, */*; q=0.01",
+              "Accept-Language":  "es-ES,es;q=0.9",
+              "Referer":          referer,
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+          const text = await r.text();
+          console.log(`CF Worker getservices [${domain}]: ${r.status} — ${text.length} chars`);
+
+          // Extraer JSON del JSONP
+          const i0 = text.indexOf("{");
+          const i1 = text.lastIndexOf("}");
+          if (i0 !== -1 && i1 > i0) {
+            try {
+              const data = JSON.parse(text.slice(i0, i1 + 1));
+              const allow = data.AllowAppointment;
+              if (allow !== null && allow !== undefined) {
+                return new Response(JSON.stringify({
+                  ok:               true,
+                  domain:           domain,
+                  AllowAppointment: allow,
+                  services_count:   (data.Services || []).length,
+                  agendas_count:    (data.Agendas  || []).length,
+                  sid:              (data.Services || [{}])[0]?.id || "",
+                }), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json", "Cache-Control": "no-cache, no-store", "Access-Control-Allow-Origin": "*" },
+                });
+              }
+            } catch (_) {}
+          }
+        } catch (err) {
+          console.error(`CF Worker getservices [${domain}] error: ${err.message}`);
+        }
+      }
+      return new Response(JSON.stringify({ ok: false, error: "getservices no respondió con JSON válido en ningún dominio" }),
+        { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+    }
+
+    // Construir URL objetivo para modos jsonp/full
     let targetUrl;
     if (target === "citaconsular") {
       // Intentar via citaconsular.es (con Imperva — Workers pueden pasar el JS challenge)
