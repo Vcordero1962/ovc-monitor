@@ -209,6 +209,7 @@ docker compose up -d
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| Mar 19 2026 | **Sesión 7**: análisis logs noche (14h gap), diagnóstico captcha intermitente citaconsular.es, bursts nocturnos GA (02:30+07:30 UTC), anti-sleep INICIAR_SPIES.bat |
 | Mar 18 2026 | **Sesión 5**: ovc_spy flujo completo, AllowAppointment interceptor, ventanas críticas — commits `31c95e9`→`b1ce24c` |
 | Mar 17 2026 | ovc_inspector + Capa 1 app.bookitit.com directo (root cause Imperva soft-block resuelto) — commit `ba591fc` |
 | Mar 16 2026 | Bot gestor + Neon DB + watermark DM + elimina AVC definitivamente |

@@ -14,6 +14,8 @@ on:
   schedule:
     - cron: '55 11 * * *'  # 11:55 UTC = 07:55 Madrid (08:00 es apertura tipica)
     - cron: '55 21 * * *'  # 21:55 UTC = 17:55 Miami  (18:00 es apertura tipica)
+    - cron: '30 02 * * *'  # 02:30 UTC = 22:30 Miami  (cobertura nocturna — PC apagado)
+    - cron: '30 07 * * *'  # 07:30 UTC = 03:30 Miami  (cobertura madrugada — PC apagado)
   workflow_dispatch:
     inputs:
       max_min:
