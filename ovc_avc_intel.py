@@ -89,6 +89,16 @@ def scrape_canal_telegram(channel_url: str) -> list:
 
         html = r.text
 
+        # Pre-extraer mapa msg_id → timestamp desde el HTML completo
+        # El <time datetime="..."> está en el footer, fuera del bloque de texto,
+        # por eso la extracción dentro del bloque falla frecuentemente.
+        ts_por_id: dict = {}
+        for m in re.finditer(
+            r'data-post="[^/]+/(\d+)".*?datetime="([^"]+)"',
+            html, re.DOTALL
+        ):
+            ts_por_id[m.group(1)] = m.group(2)
+
         # Extraer bloques de mensajes individuales
         # t.me/s/ usa estructura: <div class="tgme_widget_message_wrap">
         bloques = re.findall(
@@ -97,7 +107,7 @@ def scrape_canal_telegram(channel_url: str) -> list:
         )
 
         for bloque in bloques:
-            post = _parsear_post(bloque)
+            post = _parsear_post(bloque, ts_por_id)
             if post:
                 posts.append(post)
 
@@ -113,12 +123,18 @@ def scrape_canal_telegram(channel_url: str) -> list:
     return posts
 
 
-def _parsear_post(bloque: str) -> dict | None:
+def _parsear_post(bloque: str, ts_por_id: dict | None = None) -> dict | None:
     """Parsea un bloque HTML de mensaje Telegram."""
     try:
-        # Timestamp del mensaje
+        # ID del mensaje
+        msg_id_m = re.search(r'data-post="[^/]+/(\d+)"', bloque)
+        msg_id = msg_id_m.group(1) if msg_id_m else ""
+
+        # Timestamp: primero en el bloque, luego en el mapa pre-extraído
         ts_m = re.search(r'datetime="([^"]+)"', bloque)
         ts_raw = ts_m.group(1) if ts_m else ""
+        if not ts_raw and ts_por_id and msg_id:
+            ts_raw = ts_por_id.get(msg_id, "")
 
         # Texto del mensaje
         texto_m = re.search(
@@ -133,10 +149,6 @@ def _parsear_post(bloque: str) -> dict | None:
         # Fotos adjuntas
         fotos = re.findall(r'<a[^>]+style="[^"]*background-image:url\(\'([^\']+)\'\)', bloque)
         fotos += re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', bloque)
-
-        # ID del mensaje
-        msg_id_m = re.search(r'data-post="[^/]+/(\d+)"', bloque)
-        msg_id = msg_id_m.group(1) if msg_id_m else ""
 
         # Análisis de contenido
         texto_lower = texto.lower()

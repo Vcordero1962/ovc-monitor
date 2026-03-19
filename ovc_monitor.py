@@ -50,7 +50,7 @@ AVC_KEYWORDS = {
 
 # Frases de alerta en el canal AVC
 # "HABILITADOS" solo cuenta si NO va seguido de "AGOTADOS" en el mismo contexto
-AVC_ALERTAS = ["CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA"]
+AVC_ALERTAS = ["CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA", "TURNOS HABILITADOS"]
 
 # Rutas posibles de Chrome en Windows
 CHROME_PATHS = [

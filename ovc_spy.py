@@ -340,6 +340,13 @@ def espiar_url(url_objetivo: str, visible: bool = False, modo_rapido: bool = Fal
             locale="es-ES",
             viewport={"width": 1366, "height": 768},
             record_har_path=str(BASE_DIR / f"ovc_spy_{ts_run}.har"),
+            extra_http_headers={
+                # Sobrescribir sec-ch-ua para eliminar firma "HeadlessChrome"
+                # que citaconsular.es detecta y devuelve página vacía cacheada (48h)
+                "sec-ch-ua": '"Chromium";v="122", "Google Chrome";v="122", "Not(A:Brand";v="24"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+            },
         )
 
         page = ctx.new_page()
