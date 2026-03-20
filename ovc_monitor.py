@@ -2,11 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 OVC-X — Orquestador de Vigilancia Consular
-Monitor de disponibilidad de citas | Consulado de España en La Habana
+Monitor MULTI-TRÁMITE de disponibilidad de citas | Consulado de España en La Habana
 
 Fuentes de monitoreo:
-  1. Sitio oficial bookitit (citaconsular.es) — detección directa
-  2. Canal AVC en Telegram  (t.me/s/AsesorVirtualC) — alerta anticipada
+  1. Canal AVC en Telegram (t.me/s/AsesorVirtualC) — alerta anticipada (TODOS los trámites)
+  2. Sitio oficial bookitit (citaconsular.es) — detección directa via CF Worker o Playwright
+  3. CF Worker Relay (Cloudflare Edge IPs) — bypass bloqueo Imperva en GA
+
+Refactorizado: 20 Marzo 2026 — Soporte multi-trámite simultáneo
 """
 
 import os
@@ -16,23 +19,24 @@ import time
 import random
 import hashlib
 import subprocess
-import winsound
 import requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 # ─── Configuración ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-URL_SISTEMA         = os.getenv("URL_SISTEMA", "")
 TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
-AVC_TRAMITE         = os.getenv("AVC_TRAMITE", "LMD").upper()
 INTERVALO_MIN       = int(os.getenv("INTERVALO_MIN", "180"))
 INTERVALO_MAX       = int(os.getenv("INTERVALO_MAX", "600"))
+
+# CF Worker
+CF_WORKER_URL       = os.getenv("CF_WORKER_URL", "")
+CF_WORKER_SECRET    = os.getenv("CF_WORKER_SECRET", "")
+CF_WORKER_ENABLED   = os.getenv("CF_WORKER_ENABLED", "1") == "1"
 
 # Texto que indica que NO hay citas disponibles en el sitio oficial
 TEXTO_BLOQUEADO = "No hay horas disponibles"
@@ -40,17 +44,106 @@ TEXTO_BLOQUEADO = "No hay horas disponibles"
 # Canal AVC en Telegram (versión web pública)
 URL_AVC = "https://t.me/s/AsesorVirtualC"
 
-# Palabras clave por trámite para detectar en el canal AVC
-AVC_KEYWORDS = {
-    "LMD": ["LMD", "LEGALIZACI", "CREDENCIALES"],
-    "PASAPORTE": ["PASAPORTE"],
-    "MATRIMONIO": ["MATRIMONIO", "TRANSCRIPCI"],
-    "VISADO": ["VISADO"],
-}
+# ─── Configuración MULTI-TRÁMITE ──────────────────────────────────────────────
+# Cada trámite tiene:
+#   nombre    : identificador corto para logs y alertas
+#   url       : URL del widget bookitit
+#   pk        : Public Key de bookitit (extraída de la URL)
+#   keywords  : palabras del canal AVC que indican actividad en ESTE trámite
+#   alertas   : frases de alerta específicas de este trámite (vacío = usa AVC_ALERTAS_GLOBAL)
+#   activo    : True/False para activar/desactivar sin borrar
 
-# Frases de alerta en el canal AVC
-# "HABILITADOS" solo cuenta si NO va seguido de "AGOTADOS" en el mismo contexto
-AVC_ALERTAS = ["CITAS QUE SER", "SERAN HABILITADAS", "PROXIMA FECHA", "TURNOS HABILITADOS"]
+AVC_ALERTAS_GLOBAL = [
+    "TURNOS HABILITADOS",
+    "SERAN HABILITADAS",
+    "CITAS QUE SER",
+    "PROXIMA FECHA",
+    "HABILITADOS",
+]
+
+TRAMITES_CONFIG = [
+    {
+        "nombre":   "LEGA",
+        "label":    "Legalización Consular",
+        "url":      os.getenv("URL_LEGA", "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/"),
+        "pk":       "25b6cfa9f112aef4ca19457abc237f7ba",
+        "keywords": ["LEGALIZACI", "LEGALIZACIÓN", "LEGALIZACION CONSULAR"],
+        "alertas":  [],   # usa globals
+        "activo":   True,
+    },
+    {
+        "nombre":   "LMD",
+        "label":    "Recogida LMD (Habana)",
+        "url":      os.getenv("URL_LMD", "https://www.citaconsular.es/es/hosteds/widgetdefault/28330379fc95acafd31ee9e8938c278ff/"),
+        "pk":       "28330379fc95acafd31ee9e8938c278ff",
+        "keywords": ["LMD", "LLEGANDO CREDENCIALES LMD", "CREDENCIALES LMD"],
+        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        "activo":   True,
+    },
+    {
+        "nombre":   "PASAPORTE",
+        "label":    "Primer Pasaporte Español",
+        "url":      os.getenv("URL_PASAPORTE", "https://www.citaconsular.es/es/hosteds/widgetdefault/22091b5b8d43b89fb226cabb272a844f9/"),
+        "pk":       "22091b5b8d43b89fb226cabb272a844f9",
+        "keywords": ["PRIMER PASAPORTE", "PASAPORTE ESPAÑOL"],
+        "alertas":  [],
+        "activo":   True,
+    },
+    {
+        "nombre":   "MATRIMONIO",
+        "label":    "Certificado de Matrimonio",
+        "url":      os.getenv("URL_MATRIMONIO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2096463e6aff35e340c87439bc59e410c/"),
+        "pk":       "2096463e6aff35e340c87439bc59e410c",
+        "keywords": ["MATRIMONIO", "CERTIFICADO DE MATRIMONIO", "TRANSCRIPCI"],
+        "alertas":  [],
+        "activo":   True,
+    },
+    {
+        "nombre":   "VISADO_FAMILIAR",
+        "label":    "Visado Familiar Comunitario",
+        "url":      os.getenv("URL_VISADO", "https://www.citaconsular.es/es/hosteds/widgetdefault/28db94e270580be60f6e00285a7d8141f/"),
+        "pk":       "28db94e270580be60f6e00285a7d8141f",
+        "keywords": ["VISADO FAMILIAR", "FAMILIAR COMUNITARIO", "CREDENCIALES VISADO FAMILIAR"],
+        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        "activo":   True,
+    },
+    {
+        "nombre":   "VISADO_CORTA",
+        "label":    "Visado de Corta Duración (Schengen)",
+        "url":      os.getenv("URL_VISADO", "https://www.citaconsular.es/es/hosteds/widgetdefault/28db94e270580be60f6e00285a7d8141f/"),
+        "pk":       "28db94e270580be60f6e00285a7d8141f",
+        "keywords": ["VISADO DE CORTA", "VISADO CORTA", "SCHENGEN"],
+        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        "activo":   True,
+    },
+    {
+        "nombre":   "NACIMIENTO",
+        "label":    "Certificado Literal de Nacimiento / DNI",
+        "url":      os.getenv("URL_NACIMIENTO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
+        "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
+        "keywords": ["NACIMIENTO", "CERTIFICADO LITERAL", "PRIMER DNI", "DNI"],
+        "alertas":  [],
+        "activo":   True,
+    },
+    {
+        "nombre":   "L36_MENORES",
+        "label":    "L-36 Inscripción Directa Menores",
+        "url":      os.getenv("URL_NACIMIENTO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
+        "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
+        "keywords": ["LEY 36", "L-36", "INSCRIPCION DIRECTA", "INSCRIPCIÓN DIRECTA", "MENORES"],
+        "alertas":  [],
+        "activo":   True,
+    },
+    {
+        "nombre":   "EMIGRANTE",
+        "label":    "Certificado Emigrante Retornado",
+        "url":      os.getenv("URL_NOTARIAL", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
+        "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
+        "keywords": ["EMIGRANTE RETORNADO", "CERTIFICADO DE EMIGRANTE", "CERTIFICADO EMIGRANTE"],
+        "alertas":  [],
+        "activo":   True,
+    },
+]
 
 # Rutas posibles de Chrome en Windows
 CHROME_PATHS = [
@@ -59,18 +152,19 @@ CHROME_PATHS = [
     r"C:\Users\aemes\AppData\Local\Google\Chrome\Application\chrome.exe",
 ]
 
+
 # ─── Utilidades ───────────────────────────────────────────────────────────────
 
 def log(msg: str):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Eliminar emojis para compatibilidad con terminal Windows (cp1252)
     safe = msg.encode("ascii", errors="replace").decode("ascii")
     print(f"[{ts}] {safe}", flush=True)
 
 
 def alarma_sonora(ciclos: int = 15):
     """Beeps alternados y persistentes."""
-    log("🔔 ALARMA SONORA ACTIVA — presiona Ctrl+C cuando hayas tomado control")
+    import winsound
+    log("ALARMA SONORA ACTIVA — presiona Ctrl+C cuando hayas tomado control")
     for _ in range(ciclos):
         winsound.Beep(880, 400)
         time.sleep(0.1)
@@ -80,43 +174,37 @@ def alarma_sonora(ciclos: int = 15):
         time.sleep(0.3)
 
 
-def enviar_telegram(mensaje: str, nivel: str = "🚨"):
+def enviar_telegram(mensaje: str):
     """Envía mensaje al bot de Telegram configurado."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log("⚠️  Telegram no configurado — omitiendo alerta (completa .env)")
+        log("Telegram no configurado — omitiendo alerta (completa .env)")
         return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        # Sin parse_mode: evita error 400 cuando el detalle AVC contiene HTML roto
         resp = requests.post(url, json={
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": mensaje,
+            "text":    mensaje,
         }, timeout=10)
         if resp.ok:
-            log("✅ Alerta Telegram enviada")
+            log("Alerta Telegram enviada")
         else:
-            log(f"❌ Telegram error HTTP {resp.status_code}: {resp.text[:100]}")
+            log(f"Telegram error HTTP {resp.status_code}: {resp.text[:100]}")
     except Exception as e:
-        log(f"❌ Error Telegram: {e}")
+        log(f"Error Telegram: {e}")
 
 
 def rafaga_alerta(mensaje_principal: str, repeticiones: int = 6, intervalo_seg: int = 90):
-    """
-    Envía el mensaje principal y luego repite la alarma cada 'intervalo_seg' segundos
-    hasta 'repeticiones' veces — fuerza múltiples notificaciones sonoras en el celular.
-    """
+    """Envía el mensaje y repite la alarma N veces."""
     enviar_telegram(mensaje_principal)
     for i in range(1, repeticiones + 1):
         time.sleep(intervalo_seg)
         aviso = (
-            f"🔴 ALERTA #{i}/{repeticiones} — CITA DISPONIBLE AHORA\n"
+            f"ALERTA #{i}/{repeticiones} — CITA DISPONIBLE AHORA\n"
             f"Tienes aproximadamente {(repeticiones - i) * intervalo_seg // 60} min antes "
             f"de que otro tome el turno.\n"
-            f"Entra YA: {URL_SISTEMA}"
         )
         log(f"  [RAFAGA] Reenvio #{i} de alerta Telegram...")
         enviar_telegram(aviso)
-        winsound.Beep(1760, 800)  # Beep adicional local en la PC
 
 
 def abrir_chrome_incognito(url: str):
@@ -124,23 +212,20 @@ def abrir_chrome_incognito(url: str):
     chrome_exe = next((p for p in CHROME_PATHS if Path(p).exists()), None)
     if chrome_exe:
         subprocess.Popen([chrome_exe, "--incognito", url])
-        log(f"✅ Chrome incógnito abierto → {url}")
+        log(f"Chrome incognito abierto -> {url}")
     else:
         subprocess.Popen(f'start chrome --incognito "{url}"', shell=True)
-        log(f"✅ Chrome incógnito (shell) → {url}")
+        log(f"Chrome incognito (shell) -> {url}")
 
 
-# ─── Monitor AVC ─────────────────────────────────────────────────────────────
+# ─── Monitor AVC — Multi-trámite ─────────────────────────────────────────────
 
-def revisar_canal_avc() -> tuple[bool, str]:
+def revisar_canal_avc() -> list[dict]:
     """
-    Lee los mensajes recientes del canal AVC en Telegram.
-    Solo procesa mensajes publicados en las últimas 48 horas.
-
-    Retorna (hay_alerta, detalle):
-      - hay_alerta = True si se encontró un mensaje RECIENTE con alerta del trámite
-      - detalle = texto del mensaje detectado (vacío si no hay alerta)
+    Lee el canal AVC y retorna lista de trámites con alerta detectada.
+    Retorna: [{"tramite": <config>, "detalle": str}, ...]
     """
+    alertas_detectadas = []
     try:
         headers = {
             "User-Agent": (
@@ -151,26 +236,34 @@ def revisar_canal_avc() -> tuple[bool, str]:
         }
         resp = requests.get(URL_AVC, headers=headers, timeout=15)
         if not resp.ok:
-            log(f"⚠️  AVC no accesible: HTTP {resp.status_code}")
-            return False, ""
+            log(f"  [AVC] No accesible: HTTP {resp.status_code}")
+            return []
 
-        html = resp.text
+        html  = resp.text
         ahora = datetime.now(timezone.utc)
         limite = ahora - timedelta(hours=48)
-        keywords_tramite = AVC_KEYWORDS.get(AVC_TRAMITE, [])
 
-        # Extraer bloques de mensaje con su timestamp
-        # t.me/s/ usa <time datetime="2026-03-12T10:00:00+00:00">
+        # Extraer bloques de mensajes con timestamp (fix: mapeo msg_id→datetime)
         patron_msg = re.findall(
             r'<time[^>]+datetime="([^"]+)"[^>]*>.*?'
             r'<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
             html, re.DOTALL | re.IGNORECASE
         )
 
-        if not patron_msg:
-            # Fallback: si no parsea bien, buscar timestamps sueltos
-            log("  [AVC]   Sin mensajes parseables — revisando HTML completo (ultimas 48h)")
-            # Buscar si hay fechas recientes en el HTML antes de analizar keywords
+        # Construir texto de los mensajes recientes (últimas 48h)
+        bloques_recientes = []
+        if patron_msg:
+            for ts_str, texto in patron_msg:
+                try:
+                    ts = datetime.fromisoformat(ts_str)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if ts >= limite:
+                        bloques_recientes.append(texto)
+                except Exception:
+                    pass
+        else:
+            # Fallback: verificar fechas recientes y usar últimos 8KB
             fechas = re.findall(r'datetime="(\d{4}-\d{2}-\d{2}T[^"]+)"', html)
             hay_reciente = False
             for f in fechas:
@@ -183,53 +276,84 @@ def revisar_canal_avc() -> tuple[bool, str]:
                         break
                 except Exception:
                     pass
-            if not hay_reciente:
-                log("  [AVC]   No hay mensajes recientes (48h) — ignorando historial")
-                return False, ""
-            # Hay mensajes recientes: analizar solo el bloque final del HTML
-            html_reciente = html[-8000:]  # ultimos ~8KB donde están los mensajes nuevos
-        else:
-            # Filtrar solo mensajes de las últimas 48h
-            html_reciente = ""
-            for ts_str, texto in patron_msg:
-                try:
-                    ts = datetime.fromisoformat(ts_str)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    if ts >= limite:
-                        html_reciente += " " + texto
-                except Exception:
-                    pass
+            if hay_reciente:
+                bloques_recientes = [html[-8000:]]
 
-            if not html_reciente.strip():
-                log("  [AVC]   Sin mensajes nuevos en 48h")
-                return False, ""
+        if not bloques_recientes:
+            log("  [AVC] Sin mensajes nuevos en 48h")
+            return []
 
-        # Buscar keywords solo en mensajes recientes
-        bloque = html_reciente.upper()
-        tiene_tramite = any(kw in bloque for kw in keywords_tramite)
-        tiene_alerta  = any(a in bloque for a in AVC_ALERTAS)
+        html_reciente = " ".join(bloques_recientes).upper()
 
-        if tiene_tramite and tiene_alerta:
-            fragmento = re.sub(r'<[^>]+>', '', html_reciente)[:300].strip()
-            return True, fragmento
+        # ── Verificar cada trámite activo ─────────────────────────────────────
+        for tramite in TRAMITES_CONFIG:
+            if not tramite.get("activo", True):
+                continue
 
-        return False, ""
+            keywords = [kw.upper() for kw in tramite["keywords"]]
+            alertas  = [a.upper() for a in tramite["alertas"]] or [a.upper() for a in AVC_ALERTAS_GLOBAL]
+
+            tiene_keyword = any(kw in html_reciente for kw in keywords)
+            tiene_alerta  = any(a  in html_reciente for a  in alertas)
+
+            if tiene_keyword and tiene_alerta:
+                # Extraer fragmento del texto relevante
+                fragmento = re.sub(r'<[^>]+>', '', " ".join(bloques_recientes))[:300].strip()
+                alertas_detectadas.append({
+                    "tramite": tramite,
+                    "detalle": fragmento,
+                })
+                log(f"  [AVC] ALERTA detectada: {tramite['nombre']} — {tramite['label']}")
+
+        if not alertas_detectadas:
+            log(f"  [AVC] Sin novedad en {len([t for t in TRAMITES_CONFIG if t['activo']])} tramites")
 
     except Exception as e:
-        log(f"⚠️  Error al leer canal AVC: {e}")
-        return False, ""
+        log(f"  [AVC] Error al leer canal: {e}")
+
+    return alertas_detectadas
 
 
-# ─── Monitor sitio oficial ────────────────────────────────────────────────────
+# ─── Monitor bookitit via CF Worker ───────────────────────────────────────────
 
-def verificar_disponibilidad(_page=None) -> bool:
+def verificar_via_cf_worker(tramite: dict) -> bool | None:
     """
-    Retorna True si HAY disponibilidad en el sitio bookitit.
-    Usa Playwright headless para ejecutar el JavaScript del widget.
-    Solo declara disponibilidad si el widget cargo Y no muestra bloqueo.
+    Verifica disponibilidad via Cloudflare Worker.
+    Retorna True (cita disponible), False (sin cita), None (error/desconocido).
+    """
+    if not CF_WORKER_URL or not CF_WORKER_ENABLED:
+        return None
+    try:
+        pk = tramite["pk"]
+        params = {
+            "mode":   "getservices",
+            "pk":     pk,
+            "secret": CF_WORKER_SECRET,
+        }
+        r = requests.get(CF_WORKER_URL, params=params, timeout=20)
+        if r.ok:
+            data = r.json()
+            allow = data.get("AllowAppointment")
+            if allow is not None:
+                log(f"  [CF] {tramite['nombre']}: AllowAppointment={allow} | "
+                    f"domain={data.get('domain','?')} svc={data.get('services_count','?')}")
+                return allow
+            else:
+                log(f"  [CF] {tramite['nombre']}: respuesta sin AllowAppointment — {data}")
+        else:
+            log(f"  [CF] {tramite['nombre']}: HTTP {r.status_code}")
+    except Exception as e:
+        log(f"  [CF] {tramite['nombre']}: Error {e}")
+    return None
+
+
+def verificar_via_playwright(tramite: dict) -> bool:
+    """
+    Verifica disponibilidad directa via Playwright (headless).
+    Solo si CF Worker falla o está desactivado.
     """
     try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             ctx = browser.new_context(
@@ -239,150 +363,164 @@ def verificar_disponibilidad(_page=None) -> bool:
                     "Chrome/122.0.0.0 Safari/537.36"
                 ),
                 locale="es-ES",
+                extra_http_headers={
+                    "sec-ch-ua": '"Chromium";v="122", "Google Chrome";v="122", "Not(A:Brand";v="24"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                },
             )
             page = ctx.new_page()
             try:
-                # Paso 1: handshake en la página principal para obtener cookie de sesión
                 page.goto("https://www.citaconsular.es", timeout=30000, wait_until="domcontentloaded")
                 try:
                     page.click("button:has-text('Aceptar'), button:has-text('Accept'), button:has-text('Entrar')", timeout=5000)
                 except Exception:
-                    pass  # No hay botón o ya está aceptado
-                # Paso 2: navegar al widget con la cookie ya establecida
-                page.goto(URL_SISTEMA, timeout=35000, wait_until="domcontentloaded")
-
-                # Esperar carga del widget — selectores CSS válidos únicamente
+                    pass
+                page.goto(tramite["url"], timeout=35000, wait_until="domcontentloaded")
                 try:
-                    page.wait_for_selector(
-                        "#bk-widget, #bookitit-widget, .bk-container, #datetime",
-                        timeout=30000,
-                    )
+                    page.wait_for_selector("#bk-widget, #bookitit-widget, .bk-container, #datetime", timeout=30000)
                 except PlaywrightTimeout:
-                    pass  # Si no aparece CSS, igual leemos el contenido
+                    pass
                 contenido = page.content()
-
                 if TEXTO_BLOQUEADO in contenido:
-                    return False  # Bloqueado explícitamente
-
-                # Verificar que el widget SÍ cargo (no página en blanco)
-                indicadores_widget = [
-                    "bookitit", "bk-widget", "datetime",
-                    "Selecciona", "Confirmar", "horas",
-                ]
-                widget_cargado = any(ind in contenido for ind in indicadores_widget)
-                if not widget_cargado:
-                    log("[SITIO] Pagina cargada pero widget vacio — posible caida del sitio")
                     return False
-
-                return True  # Widget cargo, no hay bloqueo → HAY DISPONIBILIDAD
-
+                indicadores = ["bookitit", "bk-widget", "datetime", "Selecciona", "Confirmar", "horas"]
+                return any(ind in contenido for ind in indicadores)
             except PlaywrightTimeout:
-                log("[SITIO] Widget no cargo en 30s — sitio caido o sin conexion")
                 return False
             finally:
                 browser.close()
     except Exception as e:
-        log(f"[SITIO] Error Playwright: {e}")
+        log(f"  [PLAYWRIGHT] {tramite['nombre']}: Error {e}")
         return False
+
+
+def verificar_disponibilidad_tramite(tramite: dict) -> bool | None:
+    """
+    Capa 0: CF Worker (IPs Cloudflare, no bloqueadas por Imperva)
+    Capa 1: Playwright headless (IP local o residencial)
+    """
+    # Capa 0: CF Worker
+    resultado_cf = verificar_via_cf_worker(tramite)
+    if resultado_cf is not None:
+        return resultado_cf
+
+    # Capa 1: Playwright (fallback si CF Worker falla)
+    log(f"  [SITIO] CF Worker sin resultado — intentando Playwright para {tramite['nombre']}...")
+    return verificar_via_playwright(tramite)
 
 
 # ─── Acciones de alerta ───────────────────────────────────────────────────────
 
-def ejecutar_alerta(origen: str, detalle: str = ""):
-    """Ejecuta la secuencia completa de alerta: sonido + Telegram + Chrome."""
+def ejecutar_alerta(origen: str, tramite: dict, detalle: str = ""):
+    """Ejecuta la secuencia completa de alerta: Telegram + Chrome."""
     hora = datetime.now().strftime("%H:%M:%S del %d/%m/%Y")
 
-    log(f"🎯 ══════════════════════════════════════════")
-    log(f"🎯  ¡CITA DISPONIBLE DETECTADA! [{origen}]")
-    log(f"🎯  Hora: {hora}")
-    log(f"🎯 ══════════════════════════════════════════")
+    log(f"============================================================")
+    log(f"  CITA DISPONIBLE DETECTADA! [{origen}] — {tramite['label']}")
+    log(f"  Hora: {hora}")
+    log(f"============================================================")
 
-    # 1. Alarma sonora
-    alarma_sonora()
+    # 1. Alarma sonora (solo en PC local, no en GA)
+    try:
+        alarma_sonora()
+    except Exception:
+        pass  # En GitHub Actions no hay winsound
 
     # 2. Telegram
     if origen == "AVC":
         cuerpo = (
-            f"📣 <b>ALERTA TEMPRANA — Canal AVC</b>\n"
-            f"Trámite: <b>{AVC_TRAMITE}</b>\n"
+            f"ALERTA TEMPRANA — Canal AVC\n"
+            f"Tramite: {tramite['label']}\n"
             f"Detectado: {hora}\n\n"
-            f"<i>{detalle[:200]}</i>\n\n"
-            f"👉 Vigila el sitio oficial ahora:\n{URL_SISTEMA}"
+            f"{detalle[:200]}\n\n"
+            f"Vigila el sitio oficial ahora:\n{tramite['url']}"
         )
     else:
         cuerpo = (
-            f"🚨 <b>¡CITA DISPONIBLE — Sitio Oficial!</b>\n"
-            f"Consulado España · La Habana\n"
+            f"CITA DISPONIBLE — Sitio Oficial!\n"
+            f"Consulado Espana - La Habana\n"
+            f"Tramite: {tramite['label']}\n"
             f"Detectado: {hora}\n\n"
-            f"⚠️ Ingresa TÚ las credenciales y resuelve el captcha\n"
-            f"🔗 {URL_SISTEMA}"
+            f"INGRESA TUS CREDENCIALES AHORA:\n"
+            f"{tramite['url']}"
         )
 
-    # 2b. Ráfaga — repite la alarma cada 90s hasta 6 veces (9 minutos en total)
-    # El usuario DEBE reaccionar — múltiples notificaciones sonoras en el celular
     rafaga_alerta(cuerpo, repeticiones=8, intervalo_seg=30)
 
     # 3. Chrome incógnito — solo si es disponibilidad REAL en el sitio oficial
     if origen == "SITIO":
-        abrir_chrome_incognito(URL_SISTEMA)
-        log("⛔ STOP — Ingresa USUARIO_CI y PASSWORD_CITA manualmente.")
+        abrir_chrome_incognito(tramite["url"])
+        log("STOP — Ingresa USUARIO_CI y PASSWORD_CITA manualmente.")
         log("   Resuelve el hCaptcha y pulsa Confirmar.")
-        log("   ⚠️  La cita NO admite cancelación ni modificación.")
+        log("   ATENCION: La cita NO admite cancelacion ni modificacion.")
 
 
 # ─── Loop principal ───────────────────────────────────────────────────────────
 
 def monitor_loop():
-    if not URL_SISTEMA:
-        log("❌ URL_SISTEMA no definida en .env — abortando")
+    tramites_activos = [t for t in TRAMITES_CONFIG if t.get("activo", True)]
+    if not tramites_activos:
+        log("ERROR: No hay tramites activos en TRAMITES_CONFIG — abortando")
         sys.exit(1)
 
     telegram_ok = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+    cf_ok       = bool(CF_WORKER_URL and CF_WORKER_ENABLED)
 
     log("=" * 64)
-    log("  OVC-X — Orquestador de Vigilancia Consular   INICIADO")
-    log(f"  URL sitio : {URL_SISTEMA}")
-    log(f"  Monitor AVC: {AVC_TRAMITE}  ({URL_AVC})")
-    log(f"  Telegram   : {'✅ configurado' if telegram_ok else '⚠️  NO configurado'}")
-    log(f"  Intervalo  : {INTERVALO_MIN // 60} a {INTERVALO_MAX // 60} min (anti-deteccion)")
+    log("  OVC-X MULTI-TRAMITE — Orquestador de Vigilancia Consular")
+    log(f"  Tramites activos : {len(tramites_activos)}")
+    for t in tramites_activos:
+        log(f"    [{t['nombre']}] {t['label']}")
+    log(f"  AVC Canal        : {URL_AVC}")
+    log(f"  Telegram         : {'OK' if telegram_ok else 'NO configurado'}")
+    log(f"  CF Worker        : {'OK (' + CF_WORKER_URL[:40] + '...)' if cf_ok else 'NO configurado'}")
+    log(f"  Intervalo        : {INTERVALO_MIN // 60} a {INTERVALO_MAX // 60} min")
     log("  Ctrl+C para detener")
     log("=" * 64)
 
-    ultimo_avc = datetime.min       # Para no spam-alertar por tiempo
-    ultimo_avc_hash = ""            # Para no alertar sobre el mismo contenido
+    # Estado por trámite: {nombre: {"ultimo_hash": str, "ultima_alerta_ts": datetime}}
+    estado_avc  = {t["nombre"]: {"ultimo_hash": "", "ultima_ts": datetime.min} for t in tramites_activos}
 
     ciclo = 0
     while True:
         ciclo += 1
-        log(f"[Ciclo #{ciclo:03d}] -----------------------------------------")
+        log(f"\n[Ciclo #{ciclo:03d}] -----------------------------------------")
 
-        # ── 1. Verificar disponibilidad real en sitio oficial ─────────────
-        log("  [SITIO] Verificando citaconsular.es...")
-        if verificar_disponibilidad():
-            ejecutar_alerta("SITIO")
-            break  # Detener: el usuario toma control
-
-        log("  [SITIO] Sin disponibilidad")
-
-        # ── 2. Verificar canal AVC (alerta anticipada) ────────────────────
-        log(f"  [AVC]   Revisando canal (tramite: {AVC_TRAMITE})...")
-        hay_alerta_avc, detalle_avc = revisar_canal_avc()
-
-        if hay_alerta_avc:
-            hash_actual = hashlib.md5(detalle_avc.encode()).hexdigest()
-            if hash_actual != ultimo_avc_hash:
-                log("  [AVC]   Mensaje NUEVO relevante detectado!")
-                ejecutar_alerta("AVC", detalle_avc)
-                ultimo_avc = datetime.now()
-                ultimo_avc_hash = hash_actual
+        # ── 1. Verificar disponibilidad REAL en sitio oficial (todos los trámites) ──
+        for tramite in tramites_activos:
+            log(f"  [SITIO] Verificando {tramite['nombre']}...")
+            resultado = verificar_disponibilidad_tramite(tramite)
+            if resultado is True:
+                ejecutar_alerta("SITIO", tramite)
+                break  # Detener todo: el usuario toma control
+            elif resultado is False:
+                log(f"  [SITIO] {tramite['nombre']}: Sin disponibilidad")
             else:
-                log("  [AVC]   Mismo mensaje ya alertado — ignorando")
-        else:
-            log("  [AVC]   Sin novedad")
+                log(f"  [SITIO] {tramite['nombre']}: Sin dato (bloqueado o error)")
 
-        # ── 3. Espera aleatoria anti-detección ────────────────────────────
+        # ── 2. Verificar canal AVC (todos los trámites simultáneamente) ─────────
+        log(f"  [AVC] Revisando canal ({len(tramites_activos)} tramites)...")
+        alertas_avc = revisar_canal_avc()
+
+        for alerta in alertas_avc:
+            tramite = alerta["tramite"]
+            detalle = alerta["detalle"]
+            nombre  = tramite["nombre"]
+            hash_actual = hashlib.md5(detalle.encode()).hexdigest()
+            est = estado_avc.get(nombre, {"ultimo_hash": "", "ultima_ts": datetime.min})
+
+            if hash_actual != est["ultimo_hash"]:
+                log(f"  [AVC] NUEVO mensaje relevante: {nombre}")
+                ejecutar_alerta("AVC", tramite, detalle)
+                estado_avc[nombre]["ultimo_hash"] = hash_actual
+                estado_avc[nombre]["ultima_ts"]   = datetime.now()
+            else:
+                log(f"  [AVC] {nombre}: mismo mensaje ya alertado — ignorando")
+
+        # ── 3. Espera aleatoria anti-detección ────────────────────────────────
         intervalo = random.randint(INTERVALO_MIN, INTERVALO_MAX)
-        proxima = datetime.fromtimestamp(time.time() + intervalo).strftime("%H:%M:%S")
+        proxima   = datetime.fromtimestamp(time.time() + intervalo).strftime("%H:%M:%S")
         log(f"  Proxima revision a las {proxima} ({intervalo // 60}m {intervalo % 60}s)\n")
         time.sleep(intervalo)
 
@@ -393,5 +531,5 @@ if __name__ == "__main__":
     try:
         monitor_loop()
     except KeyboardInterrupt:
-        log("\n⏹  Monitor detenido por el usuario.")
+        log("\nMonitor detenido por el usuario.")
         sys.exit(0)
