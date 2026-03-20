@@ -1,0 +1,195 @@
+OVC SPY — Flujo completo 20260319_112420
+Total intercambios: 3
+================================================================================
+
+================================================================================
+[#002] GET 502 — https://www.citaconsular.es/
+Tiempo captura: 2026-03-19T11:24:20.593972
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 502
+Tipo:   HTML
+Tamaño: 830 bytes
+Headers response:
+  content-length: 830
+  content-type: text/html
+  date: Thu, 19 Mar 2026 15:24:24 GMT
+  etag: "615ee0b8-33e"
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+
+Body response (primeros 800 chars):
+  <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>502 Bad Gateway</title>
+  <link rel="stylesheet" href="/error_docs/styles.css">
+</head>
+<body>
+<div class="page">
+  <div class="main">
+    <h1>Server Error</h1>
+    <div class="error-code">502</div>
+    <h2>Bad Gateway</h2>
+    <p class="lead">Web server received an invalid response while acting as a gateway or proxy server.</p>
+    <hr/>
+    <p>That's what you can do</p>
+    <div class="help-actions">
+      <a href="javascript:location.reload();">Reload Page</a>
+      <a href="javascript:history.back();">Back to Previous Page</a>
+      <a href="/">Home Page</a>
+    </div>
+ 
+
+================================================================================
+[#004] GET 200 — https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Tiempo captura: 2026-03-19T11:24:26.663250
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   HTML
+Tamaño: 1336 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-encoding: gzip
+  content-length: 708
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 15:24:34 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: Accept-Encoding,User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+Body response (primeros 800 chars):
+  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es-ES" lang="es-ES">
+    <head>        
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        
+        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>
+        
+        <link href="/css/reset.css?v=4" rel="stylesheet" type="text/css" />
+<link href="/css/hosted/captcha.css?v=4" rel="stylesheet" type="text/css" />
+    </head>
+    
+    <body>
+        <script>
+    alert('Welcome / Bienvenido');
+</script>
+
+<div id="idCaptchaContainer">
+    <div id="idCaptchaContent">
+        <div id="
+
+*** HALLAZGOS ***
+  token_csrf: 17045b7afa5a22be056ded82ad9544f05553
+
+================================================================================
+[#007] POST 200 — https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Tiempo captura: 2026-03-19T11:24:44.806475
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Metodo:  POST
+Headers request:
+  accept-language: es-ES
+  content-type: application/x-www-form-urlencoded
+  origin: https://www.citaconsular.es
+  referer: https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+Body request:
+  token=17045b7afa5a22be056ded82ad9544f05553
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   JSONP/JS
+Tamaño: 1225 bytes
+Headers response:
+  cache-control: max-age=172800
+  content-encoding: gzip
+  content-length: 672
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 15:24:57 GMT
+  expires: Sat, 21 Mar 2026 15:24:56 GMT
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: Accept-Encoding,User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+Body response (primeros 800 chars):
+  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es-ES" lang="es-ES">
+    <head>        
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        
+        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>
+        
+            </head>
+    
+    <body>
+        <div id="idBktWidgetBody"></div>
+
+<script type="text/javascript">
+    var bkt_init_widget = {
+        type: 'default', 
+        srvsrc: 'https://www.citaconsular.es', 
+        publickey: '25b6cfa9f112aef4ca19457abc237f7ba', 
+        lang: 'es', 
+        services: [], 
+        ag
+
+
+================================================================================
+RESUMEN ANALISIS
+================================================================================
+
+⭐ AllowAppointment (getservices): None
+
+TOKENS CSRF encontrados : ['17045b7afa5a22be056ded82ad9544f05553']
+SERVICE IDs (SID)       : []
+PUBLIC KEYS (PK)        : []
+Cookies de sesión       : []
+
+Detalle cookies:
+
+Scripts Bookitit encontrados:
+
+Respuestas BKT JSONP (0):

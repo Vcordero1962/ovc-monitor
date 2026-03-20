@@ -1,0 +1,106 @@
+[
+  {
+    "seq": 1,
+    "ts": "2026-03-19T13:42:20.563389",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"122\", \"Google Chrome\";v=\"122\", \"Not(A:Brand\";v=\"24\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 302,
+    "resp_headers": {
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 17:42:21 GMT",
+      "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+      "location": "/XGAJMwo2VWELOwJxB3IEMgEbDnZSKVo0BGRTaAVwDy5SawU_Cz5cYFpo",
+      "pragma": "no-cache",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 0,
+    "resp_body_preview": "",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  },
+  {
+    "seq": 2,
+    "ts": "2026-03-19T13:42:21.088161",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/XGAJMwo2VWELOwJxB3IEMgEbDnZSKVo0BGRTaAVwDy5SawU_Cz5cYFpo",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"122\", \"Google Chrome\";v=\"122\", \"Not(A:Brand\";v=\"24\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 200,
+    "resp_headers": {
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "content-length": "0",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 17:42:21 GMT",
+      "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+      "pragma": "no-cache",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 0,
+    "resp_body_preview": "",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  },
+  {
+    "seq": 3,
+    "ts": "2026-03-19T13:42:23.286791",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"122\", \"Google Chrome\";v=\"122\", \"Not(A:Brand\";v=\"24\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 200,
+    "resp_headers": {
+      "cache-control": "max-age=172800",
+      "content-length": "0",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 17:42:23 GMT",
+      "expires": "Sat, 21 Mar 2026 17:42:23 GMT",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 0,
+    "resp_body_preview": "",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  }
+]

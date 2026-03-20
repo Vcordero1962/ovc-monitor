@@ -1,0 +1,119 @@
+OVC SPY — Flujo completo 20260319_125006
+Total intercambios: 3
+================================================================================
+
+================================================================================
+[#001] GET 302 — https://www.citaconsular.es/
+Tiempo captura: 2026-03-19T12:50:07.244082
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 302
+Tipo:   HTML
+Tamaño: 0 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 16:50:13 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  location: /V2sJMwwwBzNaagh7VyIEMlNJDHQEfw1jVzdTaARxACFdZFNpWWwBPV1v
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+================================================================================
+[#002] GET 200 — https://www.citaconsular.es/V2sJMwwwBzNaagh7VyIEMlNJDHQEfw1jVzdTaARxACFdZFNpWWwBPV1v
+Tiempo captura: 2026-03-19T12:50:13.816116
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/V2sJMwwwBzNaagh7VyIEMlNJDHQEfw1jVzdTaARxACFdZFNpWWwBPV1v
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   HTML
+Tamaño: 0 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-length: 0
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 16:50:20 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+================================================================================
+[#003] GET 200 — https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Tiempo captura: 2026-03-19T12:50:22.871493
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   HTML
+Tamaño: 0 bytes
+Headers response:
+  cache-control: max-age=172800
+  content-length: 0
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 16:50:32 GMT
+  expires: Sat, 21 Mar 2026 16:50:29 GMT
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+
+================================================================================
+RESUMEN ANALISIS
+================================================================================
+
+⭐ AllowAppointment (getservices): None
+
+TOKENS CSRF encontrados : []
+SERVICE IDs (SID)       : []
+PUBLIC KEYS (PK)        : []
+Cookies de sesión       : []
+
+Detalle cookies:
+
+Scripts Bookitit encontrados:
+
+Respuestas BKT JSONP (0):

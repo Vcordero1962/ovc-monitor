@@ -1,0 +1,269 @@
+OVC SPY — Flujo completo 20260319_101612
+Total intercambios: 5
+================================================================================
+
+================================================================================
+[#001] GET 302 — https://www.citaconsular.es/
+Tiempo captura: 2026-03-19T10:16:12.800824
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 302
+Tipo:   HTML
+Tamaño: 0 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 14:16:18 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  location: /V2sFPwwwXGgKOlQnAXQHMQYcD3cFfg1jBGRVbgRxVncGP1BqATRTbwg6
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+================================================================================
+[#002] GET 200 — https://www.citaconsular.es/V2sFPwwwXGgKOlQnAXQHMQYcD3cFfg1jBGRVbgRxVncGP1BqATRTbwg6
+Tiempo captura: 2026-03-19T10:16:18.511965
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/V2sFPwwwXGgKOlQnAXQHMQYcD3cFfg1jBGRVbgRxVncGP1BqATRTbwg6
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   HTML
+Tamaño: 0 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-length: 0
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 14:16:22 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+================================================================================
+[#003] GET 200 — https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Tiempo captura: 2026-03-19T10:16:24.837862
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Metodo:  GET
+Headers request:
+  accept-language: es-ES
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   HTML
+Tamaño: 1336 bytes
+Headers response:
+  cache-control: no-store, no-cache, must-revalidate
+  content-encoding: gzip
+  content-length: 709
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 14:16:30 GMT
+  expires: Thu, 19 Nov 1981 08:52:00 GMT
+  pragma: no-cache
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: Accept-Encoding,User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+Body response (primeros 800 chars):
+  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es-ES" lang="es-ES">
+    <head>        
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        
+        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>
+        
+        <link href="/css/reset.css?v=4" rel="stylesheet" type="text/css" />
+<link href="/css/hosted/captcha.css?v=4" rel="stylesheet" type="text/css" />
+    </head>
+    
+    <body>
+        <script>
+    alert('Welcome / Bienvenido');
+</script>
+
+<div id="idCaptchaContainer">
+    <div id="idCaptchaContent">
+        <div id="
+
+*** HALLAZGOS ***
+  token_csrf: 694a984a262195fa86d3b9dc74672cfdb757
+
+================================================================================
+[#007] POST 200 — https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Tiempo captura: 2026-03-19T10:16:36.307270
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+Metodo:  POST
+Headers request:
+  accept-language: es-ES
+  content-type: application/x-www-form-urlencoded
+  origin: https://www.citaconsular.es
+  referer: https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+
+Body request:
+  token=694a984a262195fa86d3b9dc74672cfdb757
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   JSONP/JS
+Tamaño: 1225 bytes
+Headers response:
+  cache-control: max-age=172800
+  content-encoding: gzip
+  content-length: 672
+  content-type: text/html; charset=UTF-8
+  date: Thu, 19 Mar 2026 14:16:42 GMT
+  expires: Sat, 21 Mar 2026 14:16:41 GMT
+  server: nginx
+  strict-transport-security: max-age=15768000; includeSubDomains
+  vary: Accept-Encoding,User-Agent
+  x-frame-options: DENY
+  x-powered-by: PHP/7.2.34
+PleskLin
+
+Body response (primeros 800 chars):
+  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es-ES" lang="es-ES">
+    <head>        
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        
+        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>
+        
+            </head>
+    
+    <body>
+        <div id="idBktWidgetBody"></div>
+
+<script type="text/javascript">
+    var bkt_init_widget = {
+        type: 'default', 
+        srvsrc: 'https://www.citaconsular.es', 
+        publickey: '25b6cfa9f112aef4ca19457abc237f7ba', 
+        lang: 'es', 
+        services: [], 
+        ag
+
+================================================================================
+[#007] GET 200 — https://www.citaconsular.es/js/widgets/loadermaec.js?v=4
+Tiempo captura: 2026-03-19T10:16:53.975431
+
+── REQUEST ──────────────────────────────────────────────────────
+URL:     https://www.citaconsular.es/js/widgets/loadermaec.js?v=4
+Metodo:  GET
+Headers request:
+  sec-ch-ua-platform: "Windows"
+  referer: https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36
+  sec-ch-ua: "Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"
+  accept-language: es-ES
+  sec-ch-ua-mobile: ?0
+
+── RESPONSE ─────────────────────────────────────────────────────
+Status: 200
+Tipo:   JSONP/JS
+Tamaño: 6414 bytes
+Headers response:
+  x-frame-options: DENY
+  strict-transport-security: max-age=15768000; includeSubDomains
+  x-powered-by: PleskLin
+  cache-control: max-age=3600
+  content-encoding: gzip
+  etag: "190e-64cd4bfd7b6f8-gzip"
+  expires: Thu, 19 Mar 2026 15:16:47 GMT
+  accept-ranges: bytes
+  content-length: 1474
+  date: Thu, 19 Mar 2026 14:16:47 GMT
+  content-type: application/javascript
+  last-modified: Thu, 12 Mar 2026 14:41:35 GMT
+  server: nginx
+  vary: Accept-Encoding,User-Agent
+
+Body response (primeros 800 chars):
+  (function(){
+    var sVersion = (inIframe()) ? '2' : '4';
+    
+    var sSrc = bkt_init_widget.srvsrc;    
+    var sServerUrl = sSrc.split("/js/")[0];
+    
+    var sJqueryUrl = sServerUrl + '/js/jquery/jquery-2.1.1.min.js';
+    var sRequireUrl = sServerUrl + '/js/require/require-2.1.14.js';
+    
+    var sMainUrl = sServerUrl + '/onlinebookings/main';
+    var sMainJsUrl = sServerUrl + '/js/widgets/mainv1.js?v=' + sVersion;
+    
+    var sMainContainer = '#idBktWidgetBody';
+    
+//    var jQueryBkt;
+                 
+    function start(){
+        bkt_init_widget.version = sVersion;
+        
+        bkt_init_widget.src = document.location.href;
+        
+        if(bkt_init_widget.src.indexOf("#redsysok") >= 0){
+            var src = bkt_init_widget.src.split("#redsysok");
+            bkt_init_w
+
+
+================================================================================
+RESUMEN ANALISIS
+================================================================================
+
+⭐ AllowAppointment (getservices): None
+
+TOKENS CSRF encontrados : ['694a984a262195fa86d3b9dc74672cfdb757']
+SERVICE IDs (SID)       : []
+PUBLIC KEYS (PK)        : []
+Cookies de sesión       : []
+
+Detalle cookies:
+
+Scripts Bookitit encontrados:
+
+Respuestas BKT JSONP (0):

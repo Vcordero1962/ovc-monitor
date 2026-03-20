@@ -1,0 +1,148 @@
+[
+  {
+    "seq": 1,
+    "ts": "2026-03-19T11:57:40.673442",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"HeadlessChrome\";v=\"140\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 302,
+    "resp_headers": {
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 15:57:50 GMT",
+      "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+      "location": "/VWkDOQE9VGAOPgJxWi8BN1FLXiZRKlg2XT0EP1InAyJWbwI4ATRQbAAy",
+      "pragma": "no-cache",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 0,
+    "resp_body_preview": "",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  },
+  {
+    "seq": 2,
+    "ts": "2026-03-19T11:57:51.072586",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/VWkDOQE9VGAOPgJxWi8BN1FLXiZRKlg2XT0EP1InAyJWbwI4ATRQbAAy",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"HeadlessChrome\";v=\"140\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 200,
+    "resp_headers": {
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "content-length": "0",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 15:58:01 GMT",
+      "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+      "pragma": "no-cache",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 0,
+    "resp_body_preview": "",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  },
+  {
+    "seq": 3,
+    "ts": "2026-03-19T11:58:03.993520",
+    "metodo": "GET",
+    "url": "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"HeadlessChrome\";v=\"140\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "",
+    "resp_status": 200,
+    "resp_headers": {
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "content-encoding": "gzip",
+      "content-length": "706",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 15:58:10 GMT",
+      "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+      "pragma": "no-cache",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "Accept-Encoding,User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "HTML",
+    "resp_size": 1336,
+    "resp_body_preview": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"es-ES\" lang=\"es-ES\">\n    <head>        \n        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n        \n        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>\n        \n        <link href=\"/css/reset.css?v=4\" rel=\"stylesheet\" type=\"text/css\" />\n<link href=\"/css/hosted/captcha.css?v=4\" rel=\"stylesheet\" type=\"text/css\" />\n    </head>\n    \n    <body>\n        <script>\n    alert('Welcome / Bienvenido');\n</script>\n\n<div id=\"idCaptchaContainer\">\n    <div id=\"idCaptchaContent\">\n        <div id=\"",
+    "bkt_callback": null,
+    "hallazgos": {
+      "token_csrf": "21d9e27e76b66d9faebc91ded1ca3dc6a085"
+    },
+    "allow_appointment": null
+  },
+  {
+    "seq": 6,
+    "ts": "2026-03-19T11:58:17.612179",
+    "metodo": "POST",
+    "url": "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/",
+    "req_headers": {
+      "accept-language": "es-ES",
+      "content-type": "application/x-www-form-urlencoded",
+      "origin": "https://www.citaconsular.es",
+      "referer": "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"HeadlessChrome\";v=\"140\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "req_body": "token=21d9e27e76b66d9faebc91ded1ca3dc6a085",
+    "resp_status": 200,
+    "resp_headers": {
+      "cache-control": "max-age=172800",
+      "content-encoding": "gzip",
+      "content-length": "672",
+      "content-type": "text/html; charset=UTF-8",
+      "date": "Thu, 19 Mar 2026 15:58:26 GMT",
+      "expires": "Sat, 21 Mar 2026 15:58:24 GMT",
+      "server": "nginx",
+      "strict-transport-security": "max-age=15768000; includeSubDomains",
+      "vary": "Accept-Encoding,User-Agent",
+      "x-frame-options": "DENY",
+      "x-powered-by": "PHP/7.2.34\nPleskLin"
+    },
+    "resp_tipo": "JSONP/JS",
+    "resp_size": 1225,
+    "resp_body_preview": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"es-ES\" lang=\"es-ES\">\n    <head>        \n        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n        \n        <title>Consulado General de España en la Habana (Cuba) - LEGALIZACIONES</title>\n        \n            </head>\n    \n    <body>\n        <div id=\"idBktWidgetBody\"></div>\n\n<script type=\"text/javascript\">\n    var bkt_init_widget = {\n        type: 'default', \n        srvsrc: 'https://www.citaconsular.es', \n        publickey: '25b6cfa9f112aef4ca19457abc237f7ba', \n        lang: 'es', \n        services: [], \n        ag",
+    "bkt_callback": null,
+    "hallazgos": {},
+    "allow_appointment": null
+  }
+]
