@@ -220,3 +220,11 @@ docker compose up -d
 | Mar 15 2026 (mañana) | Grupo Telegram "OVC Alertas Consulado" — alertas a múltiples miembros |
 | Mar 14 2026 | Fix WiFi + Fix DNS GitHub Actions + auto-fallback wg0 |
 | Mar 13 2026 | Setup inicial GitHub Actions, anti-bot, heartbeat, repo privado |
+
+
+## Estado Actual (Marzo 20)
+- **Multi-Trámite Activo**: ovc_monitor.py vigila 9 trámites simultáneos.
+- **Bypass de Imperva**: Capa 0 activada usando un Cloudflare Worker en ovc-relay.vladimircordero913.workers.dev.
+- **OVC_SECRET configurado**: Clave \ovc2026habana\ integrada en CF Dashboard para validación.
+- **Fallback Activo**: Playwright modo headless disponible (Capa 1) por si Cloudflare falla.
+- **Problema de IPs resuelto**: Las consultas ahora salen por IPs Edge.
