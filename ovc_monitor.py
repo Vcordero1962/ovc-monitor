@@ -42,7 +42,7 @@ CF_WORKER_ENABLED   = os.getenv("CF_WORKER_ENABLED", "1") == "1"
 TEXTO_BLOQUEADO = "No hay horas disponibles"
 
 # Canal AVC en Telegram (versión web pública)
-URL_AVC = "https://t.me/s/AsesorVirtualC"
+
 
 # ─── Configuración MULTI-TRÁMITE ──────────────────────────────────────────────
 # Cada trámite tiene:
@@ -67,8 +67,8 @@ TRAMITES_CONFIG = [
         "label":    "Legalización Consular",
         "url":      os.getenv("URL_LEGA", "https://www.citaconsular.es/es/hosteds/widgetdefault/25b6cfa9f112aef4ca19457abc237f7ba/"),
         "pk":       "25b6cfa9f112aef4ca19457abc237f7ba",
-        "keywords": ["LEGALIZACI", "LEGALIZACIÓN", "LEGALIZACION CONSULAR"],
-        "alertas":  [],   # usa globals
+        
+           # usa globals
         "activo":   True,
     },
     {
@@ -76,8 +76,8 @@ TRAMITES_CONFIG = [
         "label":    "Recogida LMD (Habana)",
         "url":      os.getenv("URL_LMD", "https://www.citaconsular.es/es/hosteds/widgetdefault/28330379fc95acafd31ee9e8938c278ff/"),
         "pk":       "28330379fc95acafd31ee9e8938c278ff",
-        "keywords": ["LMD", "LLEGANDO CREDENCIALES LMD", "CREDENCIALES LMD"],
-        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        
+        
         "activo":   True,
     },
     {
@@ -85,8 +85,8 @@ TRAMITES_CONFIG = [
         "label":    "Primer Pasaporte Español",
         "url":      os.getenv("URL_PASAPORTE", "https://www.citaconsular.es/es/hosteds/widgetdefault/22091b5b8d43b89fb226cabb272a844f9/"),
         "pk":       "22091b5b8d43b89fb226cabb272a844f9",
-        "keywords": ["PRIMER PASAPORTE", "PASAPORTE ESPAÑOL"],
-        "alertas":  [],
+        
+        
         "activo":   True,
     },
     {
@@ -94,8 +94,8 @@ TRAMITES_CONFIG = [
         "label":    "Certificado de Matrimonio",
         "url":      os.getenv("URL_MATRIMONIO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2096463e6aff35e340c87439bc59e410c/"),
         "pk":       "2096463e6aff35e340c87439bc59e410c",
-        "keywords": ["MATRIMONIO", "CERTIFICADO DE MATRIMONIO", "TRANSCRIPCI"],
-        "alertas":  [],
+        
+        
         "activo":   True,
     },
     {
@@ -103,8 +103,8 @@ TRAMITES_CONFIG = [
         "label":    "Visado Familiar Comunitario",
         "url":      os.getenv("URL_VISADO", "https://www.citaconsular.es/es/hosteds/widgetdefault/28db94e270580be60f6e00285a7d8141f/"),
         "pk":       "28db94e270580be60f6e00285a7d8141f",
-        "keywords": ["VISADO FAMILIAR", "FAMILIAR COMUNITARIO", "CREDENCIALES VISADO FAMILIAR"],
-        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        
+        
         "activo":   True,
     },
     {
@@ -112,8 +112,8 @@ TRAMITES_CONFIG = [
         "label":    "Visado de Corta Duración (Schengen)",
         "url":      os.getenv("URL_VISADO", "https://www.citaconsular.es/es/hosteds/widgetdefault/28db94e270580be60f6e00285a7d8141f/"),
         "pk":       "28db94e270580be60f6e00285a7d8141f",
-        "keywords": ["VISADO DE CORTA", "VISADO CORTA", "SCHENGEN"],
-        "alertas":  ["LLEGANDO CREDENCIALES", "CREDENCIALES"],
+        
+        
         "activo":   True,
     },
     {
@@ -121,8 +121,8 @@ TRAMITES_CONFIG = [
         "label":    "Certificado Literal de Nacimiento / DNI",
         "url":      os.getenv("URL_NACIMIENTO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
         "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
-        "keywords": ["NACIMIENTO", "CERTIFICADO LITERAL", "PRIMER DNI", "DNI"],
-        "alertas":  [],
+        
+        
         "activo":   True,
     },
     {
@@ -130,8 +130,8 @@ TRAMITES_CONFIG = [
         "label":    "L-36 Inscripción Directa Menores",
         "url":      os.getenv("URL_NACIMIENTO", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
         "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
-        "keywords": ["LEY 36", "L-36", "INSCRIPCION DIRECTA", "INSCRIPCIÓN DIRECTA", "MENORES"],
-        "alertas":  [],
+        
+        
         "activo":   True,
     },
     {
@@ -139,8 +139,8 @@ TRAMITES_CONFIG = [
         "label":    "Certificado Emigrante Retornado",
         "url":      os.getenv("URL_NOTARIAL", "https://www.citaconsular.es/es/hosteds/widgetdefault/2f21cd9c0d8aa26725bf8930e4691d645/"),
         "pk":       "2f21cd9c0d8aa26725bf8930e4691d645",
-        "keywords": ["EMIGRANTE RETORNADO", "CERTIFICADO DE EMIGRANTE", "CERTIFICADO EMIGRANTE"],
-        "alertas":  [],
+        
+        
         "activo":   True,
     },
 ]
@@ -216,102 +216,6 @@ def abrir_chrome_incognito(url: str):
     else:
         subprocess.Popen(f'start chrome --incognito "{url}"', shell=True)
         log(f"Chrome incognito (shell) -> {url}")
-
-
-# ─── Monitor AVC — Multi-trámite ─────────────────────────────────────────────
-
-def revisar_canal_avc() -> list[dict]:
-    """
-    Lee el canal AVC y retorna lista de trámites con alerta detectada.
-    Retorna: [{"tramite": <config>, "detalle": str}, ...]
-    """
-    alertas_detectadas = []
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
-            )
-        }
-        resp = requests.get(URL_AVC, headers=headers, timeout=15)
-        if not resp.ok:
-            log(f"  [AVC] No accesible: HTTP {resp.status_code}")
-            return []
-
-        html  = resp.text
-        ahora = datetime.now(timezone.utc)
-        limite = ahora - timedelta(hours=48)
-
-        # Extraer bloques de mensajes con timestamp (fix: mapeo msg_id→datetime)
-        patron_msg = re.findall(
-            r'<time[^>]+datetime="([^"]+)"[^>]*>.*?'
-            r'<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-            html, re.DOTALL | re.IGNORECASE
-        )
-
-        # Construir texto de los mensajes recientes (últimas 48h)
-        bloques_recientes = []
-        if patron_msg:
-            for ts_str, texto in patron_msg:
-                try:
-                    ts = datetime.fromisoformat(ts_str)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    if ts >= limite:
-                        bloques_recientes.append(texto)
-                except Exception:
-                    pass
-        else:
-            # Fallback: verificar fechas recientes y usar últimos 8KB
-            fechas = re.findall(r'datetime="(\d{4}-\d{2}-\d{2}T[^"]+)"', html)
-            hay_reciente = False
-            for f in fechas:
-                try:
-                    ts = datetime.fromisoformat(f)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    if ts >= limite:
-                        hay_reciente = True
-                        break
-                except Exception:
-                    pass
-            if hay_reciente:
-                bloques_recientes = [html[-8000:]]
-
-        if not bloques_recientes:
-            log("  [AVC] Sin mensajes nuevos en 48h")
-            return []
-
-        html_reciente = " ".join(bloques_recientes).upper()
-
-        # ── Verificar cada trámite activo ─────────────────────────────────────
-        for tramite in TRAMITES_CONFIG:
-            if not tramite.get("activo", True):
-                continue
-
-            keywords = [kw.upper() for kw in tramite["keywords"]]
-            alertas  = [a.upper() for a in tramite["alertas"]] or [a.upper() for a in AVC_ALERTAS_GLOBAL]
-
-            tiene_keyword = any(kw in html_reciente for kw in keywords)
-            tiene_alerta  = any(a  in html_reciente for a  in alertas)
-
-            if tiene_keyword and tiene_alerta:
-                # Extraer fragmento del texto relevante
-                fragmento = re.sub(r'<[^>]+>', '', " ".join(bloques_recientes))[:300].strip()
-                alertas_detectadas.append({
-                    "tramite": tramite,
-                    "detalle": fragmento,
-                })
-                log(f"  [AVC] ALERTA detectada: {tramite['nombre']} — {tramite['label']}")
-
-        if not alertas_detectadas:
-            log(f"  [AVC] Sin novedad en {len([t for t in TRAMITES_CONFIG if t['activo']])} tramites")
-
-    except Exception as e:
-        log(f"  [AVC] Error al leer canal: {e}")
-
-    return alertas_detectadas
 
 
 # ─── Monitor bookitit via CF Worker ───────────────────────────────────────────
@@ -428,15 +332,7 @@ def ejecutar_alerta(origen: str, tramite: dict, detalle: str = ""):
         pass  # En GitHub Actions no hay winsound
 
     # 2. Telegram
-    if origen == "AVC":
-        cuerpo = (
-            f"ALERTA TEMPRANA — Canal AVC\n"
-            f"Tramite: {tramite['label']}\n"
-            f"Detectado: {hora}\n\n"
-            f"{detalle[:200]}\n\n"
-            f"Vigila el sitio oficial ahora:\n{tramite['url']}"
-        )
-    else:
+
         cuerpo = (
             f"CITA DISPONIBLE — Sitio Oficial!\n"
             f"Consulado Espana - La Habana\n"
@@ -499,29 +395,6 @@ def monitor_loop():
             else:
                 log(f"  [SITIO] {tramite['nombre']}: Sin dato (bloqueado o error)")
 
-        # ── 2. Verificar canal AVC (todos los trámites simultáneamente) ─────────
-        log(f"  [AVC] Revisando canal ({len(tramites_activos)} tramites)...")
-        alertas_avc = revisar_canal_avc()
-
-        for alerta in alertas_avc:
-            tramite = alerta["tramite"]
-            detalle = alerta["detalle"]
-            nombre  = tramite["nombre"]
-            hash_actual = hashlib.md5(detalle.encode()).hexdigest()
-            est = estado_avc.get(nombre, {"ultimo_hash": "", "ultima_ts": datetime.min})
-
-            if hash_actual != est["ultimo_hash"]:
-                log(f"  [AVC] NUEVO mensaje relevante: {nombre}")
-                ejecutar_alerta("AVC", tramite, detalle)
-                estado_avc[nombre]["ultimo_hash"] = hash_actual
-                estado_avc[nombre]["ultima_ts"]   = datetime.now()
-            else:
-                log(f"  [AVC] {nombre}: mismo mensaje ya alertado — ignorando")
-
-        # ── 3. Espera aleatoria anti-detección ────────────────────────────────
-        intervalo = random.randint(INTERVALO_MIN, INTERVALO_MAX)
-        proxima   = datetime.fromtimestamp(time.time() + intervalo).strftime("%H:%M:%S")
-        log(f"  Proxima revision a las {proxima} ({intervalo // 60}m {intervalo % 60}s)\n")
         time.sleep(intervalo)
 
 
@@ -533,3 +406,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         log("\nMonitor detenido por el usuario.")
         sys.exit(0)
+
